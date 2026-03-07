@@ -18,7 +18,7 @@ st.markdown("""
     .main-header h1 {
         color: white;
         margin: 0;
-        font-size: 24px; /* Etwas kleiner für Handy-Displays */
+        font-size: 22px; /* Optimal für Handy-Displays */
     }
     .main-header p {
         color: white;
@@ -46,10 +46,10 @@ with st.sidebar:
     makler_check = st.checkbox("Makler (3,57% BW)", value=True)
 
     st.markdown("---")
-    # NEU: Umschalter für Monatsansicht
+    # NEU: Der Umschalter für die Ansicht
     view_monthly = st.checkbox("Monatliche Details anzeigen", value=False)
 
-# Berechnung
+# Berechnung der Basisdaten
 makler = preis * 0.0357 if makler_check else 0
 notar_steuer = preis * 0.07
 darlehen = (preis + makler + notar_steuer) - ek
@@ -58,29 +58,31 @@ z_dez = zins / 100
 if tilg_wahl == "%":
     rate_m = darlehen * (z_dez + (tilg_val / 100)) / 12
 else:
-    rate_m = (darlehen * (z_dez / 12)) + tilg_val
+    zins_start = darlehen * (z_dez / 12)
+    rate_m = zins_start + tilg_val
 
-# Kacheln (Metriken)
+# Kacheln (Metriken) oben
 c1, c2 = st.columns(2)
 c1.metric("Darlehen", f"{darlehen:,.2f} €")
 c2.metric("Rate/Monat", f"{rate_m:,.2f} €")
 
-# Simulation
+# Simulation des Tilgungsplans
 data = []
 rest = darlehen
 m = 1
 ges_zins = 0
 sonti_euro = preis * (sonti_prozent / 100)
 
-while rest > 0.1 and m <= 600:
+while rest > 0.1 and m <= 600:  # Max 50 Jahre
     zm = rest * (z_dez / 12)
     tm = min(rest, rate_m - zm)
     sj = sonti_euro if m % 12 == 0 and rest > sonti_euro else 0
     rest -= (tm + sj)
     ges_zins += zm
 
-    # Logik für Ansicht (Monatlich vs Jährlich)
+    # Logik für die Tabellen-Anzeige
     if view_monthly:
+        # Jeden Monat einzeln speichern
         data.append({
             "Monat": m,
             "Zins (€)": round(zm, 2),
@@ -88,6 +90,7 @@ while rest > 0.1 and m <= 600:
             "Restschuld (€)": round(max(0, rest), 2)
         })
     elif m % 12 == 0 or rest <= 0.1:
+        # Nur Jahres-Summen speichern
         data.append({
             "Jahr": int(m / 12 if m % 12 == 0 else m // 12 + 1),
             "Zins (€)": round(zm * 12, 2),
@@ -98,14 +101,19 @@ while rest > 0.1 and m <= 600:
 
 df = pd.DataFrame(data)
 
-# Diagramm
-st.markdown("### Verlauf")
+# Diagramm anzeigen
+st.markdown("### Rückzahlungsverlauf")
 fig, ax = plt.subplots(figsize=(8, 3))
 x_axis = "Monat" if view_monthly else "Jahr"
-ax.plot(df[x_axis], df["Restschuld (€)"], color="blue")
+ax.plot(df[x_axis], df["Restschuld (€)"], color="blue", linewidth=2)
 ax.fill_between(df[x_axis], df["Restschuld (€)"], color="blue", alpha=0.1)
+ax.set_ylabel("Euro")
+ax.set_xlabel(x_axis)
 st.pyplot(fig)
 
-# Tabelle
+# Ergebnistabelle anzeigen
+st.markdown(f"### {'Monatliche' if view_monthly else 'Jährliche'} Übersicht")
 st.dataframe(df, use_container_width=True)
-st.success(f"Zinsen gesamt: {ges_zins:,.2f} € | Gesamtkosten: {darlehen + ges_zins:,.2f} €")
+
+# Zusammenfassung am Ende
+st.info(f"**Gesamtzinsen:** {ges_zins:,.2f} € | **Gesamtkosten:** {(darlehen + ges_zins):,.2f} €")
