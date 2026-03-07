@@ -25,7 +25,7 @@ st.markdown("""
     </div>
     """, unsafe_allow_html=True)
 
-# Eingabebereich oben (statt Sidebar, da auf dem Handy besser bedienbar)
+# Eingabebereich oben
 with st.expander("Eingabedaten hier anpassen", expanded=True):
     col_a, col_b = st.columns(2)
     with col_a:
@@ -35,8 +35,13 @@ with st.expander("Eingabedaten hier anpassen", expanded=True):
         zins = st.number_input("Sollzins p.a. (%)", value=3.8, step=0.1, format="%.2f")
         sonti_p = st.number_input("Sondertilgung p.a. (%)", value=1.0, step=0.5)
 
+    # Korrigierte Tilgungswahl
     t_art = st.radio("Tilgungswahl:", ["in % p.a.", "in € monatlich"], horizontal=True)
-    t_val = st.number_input("Tilgungswert", value=2.0 if "%%" in t_art else 1000.0, step=10.0)
+
+    # Dynamische Beschriftung des Feldes
+    label_tilg = "Tilgungssatz (%)" if "%%" in t_art or "%" in t_art else "Zusatztilgung (€/Monat)"
+    t_val = st.number_input(label_tilg, value=2.0 if "%" in t_art else 500.0, step=0.1 if "%" in t_art else 50.0)
+
     makler_an = st.checkbox("Makler (3,57% BW) berücksichtigen", value=True)
 
 # Rechnungslogik
@@ -45,25 +50,28 @@ n_kosten = preis * 0.07  # Notar + Steuer
 darlehen = (preis + m_kosten + n_kosten) - ek
 
 if darlehen > 0:
-    # Rate bestimmen
     z_dez = zins / 100
-    if "%%" in t_art:
+
+    # RECHNUNG KORRIGIERT
+    if "in % p.a." in t_art:
+        # Klassische Annuität: Rate = Darlehen * (Zins + Tilgung) / 12
         rate_m = darlehen * (z_dez + (t_val / 100)) / 12
     else:
-        # User gibt Euro an (Annuität)
-        rate_m = (darlehen * z_dez / 12) + t_val
+        # Euro-Wahl: Rate = Monatliche Zinsen + gewählte Euro-Tilgung
+        zins_monat_start = darlehen * (z_dez / 12)
+        rate_m = zins_monat_start + t_val
 
     # Metriken
     st.markdown("---")
     m1, m2 = st.columns(2)
-    m1.metric("Darlehen", f"{darlehen:,.2f} €")
-    m2.metric("Rate/Monat", f"{rate_m:,.2f} €")
+    m1.metric("Darlehenssumme", f"{darlehen:,.2f} €")
+    m2.metric("Monatliche Rate", f"{rate_m:,.2f} €")
 
     # Umschalter Ansicht
     st.markdown("---")
-    view_m = st.toggle("Detaillierte Monatsansicht aktivieren", value=False)
+    view_m = st.toggle("Detaillierte Monatsansicht (Tabelle)", value=False)
 
-    # Tilgungsplan
+    # Tilgungsplan Simulation
     plan = []
     rest = darlehen
     m = 1
@@ -73,7 +81,9 @@ if darlehen > 0:
     while rest > 0.1 and m <= 600:
         zm = rest * (z_dez / 12)
         tm = min(rest, rate_m - zm)
-        sj = s_euro if m % 12 == 0 and rest > s_euro else 0
+        # Sondertilgung immer im Dezember (Monat 12, 24, 36...)
+        sj = min(rest - tm, s_euro) if m % 12 == 0 and rest > s_euro else 0
+
         rest -= (tm + sj)
         gz += zm
 
@@ -88,11 +98,11 @@ if darlehen > 0:
 
     df = pd.DataFrame(plan)
 
-    # Chart
+    # Chart & Tabelle
     st.line_chart(df.set_index("Monat" if view_m else "Jahr")["Rest"])
-
-    # Tabelle & Info
     st.dataframe(df, use_container_width=True)
+
+    # Zusammenfassung
     st.success(f"**Zinsen gesamt:** {gz:,.2f} €  |  **Gesamtkosten:** {darlehen + gz:,.2f} €")
 else:
-    st.warning("Kein Darlehen nötig – Eigenkapital reicht aus!")
+    st.warning("Kein Darlehen nötig!")
