@@ -2,118 +2,97 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# Seiteneinstellungen für Mobile-Optimierung
-st.set_page_config(page_title="AH Finanz-Check", layout="wide")
+# Mobile Optimierung
+st.set_page_config(page_title="Finanz-Check AH", layout="centered")
 
-# Blauer Header mit CSS (Design-Anpassung)
+# Schmaler blauer Header
 st.markdown("""
     <style>
     .main-header {
         background-color: blue;
-        padding: 15px;
-        border-radius: 10px;
+        padding: 10px;
+        border-radius: 8px;
         text-align: center;
-        margin-bottom: 20px;
-    }
-    .main-header h1 {
         color: white;
-        margin: 0;
-        font-size: 22px; /* Optimal für Handy-Displays */
+        margin-bottom: 15px;
     }
-    .main-header p {
-        color: white;
-        margin: 0;
-        font-style: italic;
-    }
+    .main-header h2 { margin: 0; font-size: 20px; }
+    .main-header p { margin: 0; font-size: 14px; font-style: italic; }
     </style>
     <div class="main-header">
-        <h1>Finanz-Check</h1>
+        <h2>Finanz-Check</h2>
         <p>Alexander Heide</p>
     </div>
     """, unsafe_allow_html=True)
 
-# Sidebar für Eingaben
-with st.sidebar:
-    st.header("Eingaben")
-    preis = st.number_input("Kaufpreis (€)", value=350000, step=5000)
-    ek = st.number_input("Eigenkapital (€)", value=70000, step=5000)
-    zins = st.slider("Sollzins p.a. (%)", 0.0, 10.0, 3.8, 0.1)
+# Eingabebereich oben (statt Sidebar, da auf dem Handy besser bedienbar)
+with st.expander("Eingabedaten hier anpassen", expanded=True):
+    col_a, col_b = st.columns(2)
+    with col_a:
+        preis = st.number_input("Kaufpreis (€)", value=350000, step=1000)
+        ek = st.number_input("Eigenkapital (€)", value=70000, step=1000)
+    with col_b:
+        zins = st.number_input("Sollzins p.a. (%)", value=3.8, step=0.1, format="%.2f")
+        sonti_p = st.number_input("Sondertilgung p.a. (%)", value=1.0, step=0.5)
 
-    tilg_wahl = st.radio("Tilgung in:", ["%", "€"])
-    tilg_val = st.number_input("Tilgungswert", value=2.0 if tilg_wahl == "%" else 1000.0)
+    t_art = st.radio("Tilgungswahl:", ["in % p.a.", "in € monatlich"], horizontal=True)
+    t_val = st.number_input("Tilgungswert", value=2.0 if "%%" in t_art else 1000.0, step=10.0)
+    makler_an = st.checkbox("Makler (3,57% BW) berücksichtigen", value=True)
 
-    sonti_prozent = st.slider("Sondertilgung p.a. (%)", 0.0, 10.0, 1.0, 0.5)
-    makler_check = st.checkbox("Makler (3,57% BW)", value=True)
+# Rechnungslogik
+m_kosten = preis * 0.0357 if makler_an else 0
+n_kosten = preis * 0.07  # Notar + Steuer
+darlehen = (preis + m_kosten + n_kosten) - ek
 
+if darlehen > 0:
+    # Rate bestimmen
+    z_dez = zins / 100
+    if "%%" in t_art:
+        rate_m = darlehen * (z_dez + (t_val / 100)) / 12
+    else:
+        # User gibt Euro an (Annuität)
+        rate_m = (darlehen * z_dez / 12) + t_val
+
+    # Metriken
     st.markdown("---")
-    # NEU: Der Umschalter für die Ansicht
-    view_monthly = st.checkbox("Monatliche Details anzeigen", value=False)
+    m1, m2 = st.columns(2)
+    m1.metric("Darlehen", f"{darlehen:,.2f} €")
+    m2.metric("Rate/Monat", f"{rate_m:,.2f} €")
 
-# Berechnung der Basisdaten
-makler = preis * 0.0357 if makler_check else 0
-notar_steuer = preis * 0.07
-darlehen = (preis + makler + notar_steuer) - ek
-z_dez = zins / 100
+    # Umschalter Ansicht
+    st.markdown("---")
+    view_m = st.toggle("Detaillierte Monatsansicht aktivieren", value=False)
 
-if tilg_wahl == "%":
-    rate_m = darlehen * (z_dez + (tilg_val / 100)) / 12
+    # Tilgungsplan
+    plan = []
+    rest = darlehen
+    m = 1
+    gz = 0
+    s_euro = preis * (sonti_p / 100)
+
+    while rest > 0.1 and m <= 600:
+        zm = rest * (z_dez / 12)
+        tm = min(rest, rate_m - zm)
+        sj = s_euro if m % 12 == 0 and rest > s_euro else 0
+        rest -= (tm + sj)
+        gz += zm
+
+        if view_m:
+            plan.append(
+                {"Monat": m, "Zins": round(zm, 2), "Tilgung": round(tm + sj, 2), "Rest": round(max(0, rest), 2)})
+        elif m % 12 == 0 or rest <= 0.1:
+            jahr = int(m / 12 if m % 12 == 0 else m // 12 + 1)
+            plan.append({"Jahr": jahr, "Zins": round(zm * 12, 2), "Tilgung": round((tm * 12) + sj, 2),
+                         "Rest": round(max(0, rest), 2)})
+        m += 1
+
+    df = pd.DataFrame(plan)
+
+    # Chart
+    st.line_chart(df.set_index("Monat" if view_m else "Jahr")["Rest"])
+
+    # Tabelle & Info
+    st.dataframe(df, use_container_width=True)
+    st.success(f"**Zinsen gesamt:** {gz:,.2f} €  |  **Gesamtkosten:** {darlehen + gz:,.2f} €")
 else:
-    zins_start = darlehen * (z_dez / 12)
-    rate_m = zins_start + tilg_val
-
-# Kacheln (Metriken) oben
-c1, c2 = st.columns(2)
-c1.metric("Darlehen", f"{darlehen:,.2f} €")
-c2.metric("Rate/Monat", f"{rate_m:,.2f} €")
-
-# Simulation des Tilgungsplans
-data = []
-rest = darlehen
-m = 1
-ges_zins = 0
-sonti_euro = preis * (sonti_prozent / 100)
-
-while rest > 0.1 and m <= 600:  # Max 50 Jahre
-    zm = rest * (z_dez / 12)
-    tm = min(rest, rate_m - zm)
-    sj = sonti_euro if m % 12 == 0 and rest > sonti_euro else 0
-    rest -= (tm + sj)
-    ges_zins += zm
-
-    # Logik für die Tabellen-Anzeige
-    if view_monthly:
-        # Jeden Monat einzeln speichern
-        data.append({
-            "Monat": m,
-            "Zins (€)": round(zm, 2),
-            "Tilgung (€)": round(tm + sj, 2),
-            "Restschuld (€)": round(max(0, rest), 2)
-        })
-    elif m % 12 == 0 or rest <= 0.1:
-        # Nur Jahres-Summen speichern
-        data.append({
-            "Jahr": int(m / 12 if m % 12 == 0 else m // 12 + 1),
-            "Zins (€)": round(zm * 12, 2),
-            "Tilgung (€)": round((tm * 12) + sj, 2),
-            "Restschuld (€)": round(max(0, rest), 2)
-        })
-    m += 1
-
-df = pd.DataFrame(data)
-
-# Diagramm anzeigen
-st.markdown("### Rückzahlungsverlauf")
-fig, ax = plt.subplots(figsize=(8, 3))
-x_axis = "Monat" if view_monthly else "Jahr"
-ax.plot(df[x_axis], df["Restschuld (€)"], color="blue", linewidth=2)
-ax.fill_between(df[x_axis], df["Restschuld (€)"], color="blue", alpha=0.1)
-ax.set_ylabel("Euro")
-ax.set_xlabel(x_axis)
-st.pyplot(fig)
-
-# Ergebnistabelle anzeigen
-st.markdown(f"### {'Monatliche' if view_monthly else 'Jährliche'} Übersicht")
-st.dataframe(df, use_container_width=True)
-
-# Zusammenfassung am Ende
-st.info(f"**Gesamtzinsen:** {ges_zins:,.2f} € | **Gesamtkosten:** {(darlehen + ges_zins):,.2f} €")
+    st.warning("Kein Darlehen nötig – Eigenkapital reicht aus!")
