@@ -118,7 +118,7 @@ if darlehen > 0:
     ax.grid(True, linestyle="--", alpha=0.6)
     st.pyplot(fig)
 
-    # Tabelle für Anzeige formatieren
+    # Tabelle formatieren
     df_display = df.copy()
     for col in ["Zins", "Tilgung", "Restschuld"]:
         df_display[col] = df_display[col].apply(format_de)
@@ -127,7 +127,7 @@ if darlehen > 0:
     st.success(f"**Zinsen gesamt:** {format_de(gz)} | **Gesamtkosten:** {format_de(darlehen + gz)}")
 
 
-    # --- PDF FUNKTION ---
+    # --- PDF LOGIK ---
     def generate_pdf(data, d_sum, r_m, z_g):
         pdf = FPDF()
         pdf.add_page()
@@ -136,25 +136,22 @@ if darlehen > 0:
         pdf.ln(5)
 
         pdf.set_font("Helvetica", "", 12)
-        # Euro-Zeichen durch EUR ersetzt, um Absturz zu vermeiden
         pdf.cell(0, 10, f"Darlehenssumme: {format_de(d_sum).replace('€', 'EUR')}", ln=True)
         pdf.cell(0, 10, f"Monatliche Rate: {format_de(r_m).replace('€', 'EUR')}", ln=True)
         pdf.cell(0, 10, f"Gesamtzinsen: {format_de(z_g).replace('€', 'EUR')}", ln=True)
         pdf.ln(5)
 
-        # Tabellen-Header
         pdf.set_font("Helvetica", "B", 10)
         pdf.set_fill_color(200, 220, 255)
-        pdf.cell(20, 10, "Zeit", border=1, fill=True)
+        pdf.cell(25, 10, "Zeit", border=1, fill=True)
         pdf.cell(50, 10, "Zins (EUR)", border=1, fill=True)
         pdf.cell(50, 10, "Tilgung (EUR)", border=1, fill=True)
-        pdf.cell(50, 10, "Rest (EUR)", border=1, fill=True)
+        pdf.cell(50, 10, "Restschuld (EUR)", border=1, fill=True)
         pdf.ln()
 
-        # Tabellen-Daten
         pdf.set_font("Helvetica", "", 10)
         for _, row in data.iterrows():
-            pdf.cell(20, 8, str(row[x_axis]), border=1)
+            pdf.cell(25, 8, str(row[x_axis]), border=1)
             pdf.cell(50, 8, row["Zins"].replace('€', '').strip(), border=1)
             pdf.cell(50, 8, row["Tilgung"].replace('€', '').strip(), border=1)
             pdf.cell(50, 8, row["Restschuld"].replace('€', '').strip(), border=1)
@@ -164,16 +161,13 @@ if darlehen > 0:
 
 
     # Download Button
-    try:
-        pdf_bytes = generate_pdf(df_display, darlehen, rate_m, gz)
-        st.download_button(
-            label="📄 Ergebnis als PDF speichern",
-            data=bytes(pdf_bytes),
-            file_name="Finanzcheck_Ergebnis.pdf",
-            mime="application/pdf"
-        )
-    except Exception as e:
-        st.error(f"PDF-Fehler: {e}")
+    pdf_bytes = generate_pdf(df_display, darlehen, rate_m, gz)
+    st.download_button(
+        label="📄 Ergebnis als PDF speichern",
+        data=bytes(pdf_bytes),  # Wichtig für Online-Server
+        file_name="Finanzcheck_Ergebnis.pdf",
+        mime="application/pdf"
+    )
 
 else:
     st.warning("Kein Darlehen erforderlich.")
