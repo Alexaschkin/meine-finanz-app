@@ -15,31 +15,42 @@ def format_de(wert):
     return f"{wert:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") + " €"
 
 
-# CSS für Styling
+# CSS für Styling inkl. exakter Button-Zentrierung
 st.markdown("""
     <style>
     .main-header { background-color: blue; padding: 10px; border-radius: 8px; text-align: center; color: white; margin-bottom: 20px; }
     .main-header h2 { margin: 0; font-size: 20px; }
     .main-header p { margin: 0; font-size: 14px; font-style: italic; }
+
     .kosten-liste { background-color: #f8f9fa; padding: 15px; border-radius: 12px; font-size: 0.9rem; border: 1px solid #e9ecef; margin-bottom: 20px; }
     .flex-row { display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding: 4px 0; }
     .total-row { border-top: 2px solid #333; margin-top: 8px; padding-top: 8px; font-weight: bold; }
+
     .view-toggle-box { background-color: #e8f0fe; padding: 10px; border-radius: 8px; border: 1px solid blue; margin-bottom: 10px; display: flex; align-items: center; justify-content: center; }
+
+    /* Karten Design */
     .result-container { display: flex; justify-content: space-between; gap: 8px; margin: 20px 0 5px 0; flex-wrap: wrap; }
     .result-card { background: white; padding: 10px; border-radius: 10px; text-align: center; flex: 1; min-width: 100px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 1px solid #f0f0f0; }
     .card-label { font-size: 0.65rem; color: #666; font-weight: 600; text-transform: uppercase; display: block; }
     .card-value { font-size: 0.95rem; color: #1a1a1a; font-weight: 800; display: block; margin-top: 3px; }
 
+    /* PDF Button Zentrierung fixieren */
+    div.stDownloadButton {
+        display: flex;
+        justify-content: center;
+        width: 100%;
+        margin-top: 5px;
+    }
     div.stDownloadButton > button {
         background-color: #ff4b4b !important; 
         color: white !important; 
         border-radius: 8px !important;
-        padding: 8px 15px !important; 
-        font-size: 14px !important; 
+        padding: 10px 20px !important; 
+        font-size: 15px !important; 
         font-weight: bold !important;
         border: none !important; 
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
-        width: 100%;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.2) !important;
+        min-width: 180px;
     }
     </style>
     <div class="main-header">
@@ -48,6 +59,7 @@ st.markdown("""
     </div>
     """, unsafe_allow_html=True)
 
+# 1. Eingabebereich
 with st.expander("📝 Eingabedaten anpassen", expanded=True):
     col_a, col_b = st.columns(2)
     with col_a:
@@ -118,12 +130,10 @@ if darlehen > 0:
     current_df = pd.DataFrame(plan_m) if view_m else pd.DataFrame(plan_j)
     x_ax_label = "Monat" if view_m else "Jahr"
 
-    # Diagramm mit X-Achsen Beschriftung
+    # Diagramm
     fig, ax1 = plt.subplots(figsize=(8, 4))
     l1, = ax1.plot(current_df[x_ax_label], current_df["Restschuld"], color="blue", label="Restschuld")
     ax1.set_ylabel("Restschuld (€)", color="blue")
-
-    # NEU: Beschriftung unter den Zahlen der X-Achse
     ax1.set_xlabel("Laufzeit in Jahren" if not view_m else "Laufzeit in Monaten", fontsize=10, fontweight='bold')
 
     ax2 = ax1.twinx()
@@ -138,7 +148,6 @@ if darlehen > 0:
         l3, = ax2.plot(current_df[x_ax_label], current_df["Tilgung"], color="green", linestyle="-.", label="Tilgung")
 
     ax2.set_ylabel("Zins / Tilgung (€)")
-    # Legende etwas tiefer schieben (bbox_to_anchor angepasst)
     ax1.legend(handles=[l1, l2, l3], loc='upper center', bbox_to_anchor=(0.5, -0.28), ncol=3, frameon=False)
     st.pyplot(fig)
 
@@ -146,16 +155,18 @@ if darlehen > 0:
         st.dataframe(current_df.map(lambda x: format_de(x) if isinstance(x, (int, float)) and x > 50 else x),
                      use_container_width=True, hide_index=True)
 
+    # Ergebniskarten
     lz_t = f"{m // 12} J. {m % 12} M."
     st.markdown(f"""
     <div class="result-container">
-        <div class="result-card"><span class="card-label">Ges. Zinsen</span><span class="card-value">{format_de(gz)}</span></div>
-        <div class="result-card"><span class="card-label">Gesamtkosten</span><span class="card-value">{format_de(darlehen + gz)}</span></div>
-        <div class="result-card"><span class="card-label">Laufzeit in Jahren</span><span class="card-value">{lz_t}</span></div>
+        <div class="result-card"><span class="card-label">GES. ZINSEN</span><span class="card-value">{format_de(gz)}</span></div>
+        <div class="result-card"><span class="card-label">GESAMTKOSTEN</span><span class="card-value">{format_de(darlehen + gz)}</span></div>
+        <div class="result-card"><span class="card-label">LAUFZEIT IN JAHREN</span><span class="card-value">{lz_t}</span></div>
     </div>
     """, unsafe_allow_html=True)
 
 
+    # PDF Erzeugung
     def generate_pdf(df_data, d_sum, z_g, lz_text, x_label, figure):
         pdf = FPDF()
         pdf.add_page()
@@ -191,17 +202,23 @@ if darlehen > 0:
             pdf.cell(50, 7, format_de(row["Restschuld"]).replace('€', '').strip(), border=1)
             pdf.ln()
 
-        output_bytes = pdf.output()
+        pdf_output = pdf.output()
         if os.path.exists(tmp_path): os.remove(tmp_path)
-        return output_bytes
+        return bytes(pdf_output)  # Explizite Umwandlung in bytes()
 
 
-    pdf_b = generate_pdf(current_df, darlehen, gz, lz_t, x_ax_label, fig)
+    pdf_data = generate_pdf(current_df, darlehen, gz, lz_t, x_ax_label, fig)
 
-    col1, col2, col3 = st.columns(3)
-    with col2:
-        st.download_button("📄 PDF speichern?", data=bytes(pdf_b), file_name="Finanzprognose.pdf",
-                           mime="application/pdf", use_container_width=True)
+    # PDF Button zentriert unter der mittleren Karte (Spalten-Logik für Streamlit)
+    c1, c2, c3 = st.columns(3)
+    with c2:
+        st.download_button(
+            label="📄 PDF speichern?",
+            data=pdf_data,
+            file_name="Finanzprognose.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
 
 else:
     st.warning("Kein Darlehen erforderlich.")
