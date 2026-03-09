@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 from fpdf import FPDF
 import matplotlib.pyplot as plt
-import io
 
 # 1. Layout-Einstellungen
 st.set_page_config(page_title="Finanz-Check AH", layout="centered")
@@ -22,14 +21,14 @@ st.markdown("""
     .kosten-liste { background-color: #f8f9fa; padding: 15px; border-radius: 12px; font-size: 0.9rem; border: 1px solid #e9ecef; margin-bottom: 20px; }
     .flex-row { display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding: 4px 0; }
     .total-row { border-top: 2px solid #333; margin-top: 8px; padding-top: 8px; font-weight: bold; }
-    .view-toggle-box { background-color: #e8f0fe; padding: 10px; border-radius: 8px; border: 1px solid blue; margin-bottom: 10px; display: flex; align-items: center; justify-content: center; }
+    .view-toggle-box { background-color: #e8f0fe; padding: 10px; border-radius: 8px; border: 1px solid blue; margin-bottom: 15px; display: flex; align-items: center; justify-content: center; }
     .result-container { display: flex; justify-content: space-between; gap: 8px; margin: 20px 0 5px 0; flex-wrap: wrap; }
     .result-card { background: white; padding: 10px; border-radius: 10px; text-align: center; flex: 1; min-width: 100px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 1px solid #f0f0f0; }
     .card-label { font-size: 0.65rem; color: #666; font-weight: 600; text-transform: uppercase; display: block; }
     .card-value { font-size: 0.95rem; color: #1a1a1a; font-weight: 800; display: block; margin-top: 3px; }
 
-    /* PDF Button - Volle Breite für Smartphone */
-    div.stDownloadButton { display: flex; justify-content: center; width: 100%; margin-top: 15px; margin-bottom: 40px; }
+    /* PDF Button - Optimiert für Smartphone */
+    div.stDownloadButton { display: flex; justify-content: center; width: 100%; margin-top: 20px; margin-bottom: 50px; }
     div.stDownloadButton > button {
         width: 100% !important;
         background-color: #ff4b4b !important;
@@ -47,7 +46,7 @@ st.markdown("""
     </div>
     """, unsafe_allow_html=True)
 
-# 4. Eingaben
+# 4. Eingabebereich
 with st.expander("📝 Eingabedaten anpassen", expanded=True):
     col_a, col_b = st.columns(2)
     with col_a:
@@ -109,7 +108,7 @@ if darlehen > 0:
         if rest <= 0.01: break
         m += 1
 
-    # Graph
+    # Graph anzeigen
     fig, ax1 = plt.subplots(figsize=(8, 4))
     df_p = pd.DataFrame(plan_j)
     ax1.plot(df_p["Jahr"], df_p["Restschuld"], color="blue", label="Restschuld")
@@ -122,7 +121,17 @@ if darlehen > 0:
     ax1.legend(loc='upper center', bbox_to_anchor=(0.5, -0.28), ncol=3, frameon=False)
     st.pyplot(fig)
 
-    # 6. Ergebnisse anzeigen
+    # 6. Tabellen-Umschalter
+    st.markdown('<div class="view-toggle-box">', unsafe_allow_html=True)
+    view_m = st.toggle("🔍 Monatsansicht aktivieren", value=False)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    with st.expander("📊 Tabelle anzeigen", expanded=False):
+        current_df = pd.DataFrame(plan_m) if view_m else pd.DataFrame(plan_j)
+        st.dataframe(current_df.map(lambda x: format_de(x) if isinstance(x, (int, float)) and x > 50 else x),
+                     use_container_width=True, hide_index=True)
+
+    # Ergebnis-Karten (Mit "Ges. Zinsen")
     lz_t = f"{m // 12} J. {m % 12} M."
     st.markdown(f"""
     <div class="result-container">
@@ -133,8 +142,8 @@ if darlehen > 0:
     """, unsafe_allow_html=True)
 
 
-    # 7. PDF Logik (Fix: kein .encode() auf bytearray)
-    def generate_pdf_bytes(data_list, d_sum, z_g, lz_text):
+    # 7. PDF Logik (Korrigiert für bytearray)
+    def generate_pdf_final(data_list, d_sum, z_g, lz_text, is_monthly):
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Helvetica", "B", 16)
@@ -147,29 +156,31 @@ if darlehen > 0:
         pdf.ln(5)
 
         pdf.set_font("Helvetica", "B", 10)
-        pdf.cell(30, 10, "Jahr", border=1)
+        label_col = "Monat" if is_monthly else "Jahr"
+        pdf.cell(30, 10, label_col, border=1)
         pdf.cell(45, 10, "Zins (EUR)", border=1)
         pdf.cell(45, 10, "Tilgung (EUR)", border=1)
         pdf.cell(45, 10, "Restschuld (EUR)", border=1, ln=True)
 
         pdf.set_font("Helvetica", "", 10)
-        for row in data_list[:120]:
-            pdf.cell(30, 8, str(row.get("Jahr", row.get("Monat"))), border=1)
+        # Limit auf 200 Zeilen für PDF-Stabilität
+        for row in data_list[:200]:
+            pdf.cell(30, 8, str(row.get(label_col)), border=1)
             pdf.cell(45, 8, format_de(row["Zins"]).replace('€', ''), border=1)
             pdf.cell(45, 8, format_de(row["Tilgung"]).replace('€', ''), border=1)
             pdf.cell(45, 8, format_de(row["Restschuld"]).replace('€', ''), border=1, ln=True)
 
-        # In neueren fpdf-Versionen ist die Ausgabe direkt binär (bytearray)
         return pdf.output()
 
 
     # 8. Download & Ballons
     try:
-        final_pdf = generate_pdf_bytes(plan_j, darlehen, gz, lz_t)
+        # PDF basierend auf aktueller Ansicht erzeugen
+        pdf_output = generate_pdf_final(plan_m if view_m else plan_j, darlehen, gz, lz_t, view_m)
 
         if st.download_button(
                 label="📄 Als PDF speichern",
-                data=bytes(final_pdf),  # Konvertiert bytearray sicher in bytes
+                data=bytes(pdf_output),  # Wichtig: bytes() Konvertierung löst den Fehler
                 file_name="Finanzcheck_AH.pdf",
                 mime="application/pdf"
         ):
