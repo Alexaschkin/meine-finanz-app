@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 from fpdf import FPDF
+import io
 import tempfile
 import os
 
@@ -29,6 +30,12 @@ st.markdown("""
     .card-label { font-size: 0.65rem; color: #666; font-weight: 600; text-transform: uppercase; display: block; }
     .card-value { font-size: 0.95rem; color: #1a1a1a; font-weight: 800; display: block; margin-top: 3px; }
 
+    /* PDF Button Style & Zentrierung */
+    div.stDownloadButton {
+        display: flex;
+        justify-content: center;
+        width: 100%;
+    }
     div.stDownloadButton > button {
         background-color: #ff4b4b !important; 
         color: white !important; 
@@ -46,6 +53,7 @@ st.markdown("""
     </div>
     """, unsafe_allow_html=True)
 
+# 1. Eingabebereich
 with st.expander("📝 Eingabedaten anpassen", expanded=True):
     col_a, col_b = st.columns(2)
     with col_a:
@@ -116,6 +124,7 @@ if darlehen > 0:
     current_df = pd.DataFrame(plan_m) if view_m else pd.DataFrame(plan_j)
     x_ax_label = "Monat" if view_m else "Jahr"
 
+    # Diagramm Erstellung
     fig, ax1 = plt.subplots(figsize=(8, 4))
     l1, = ax1.plot(current_df[x_ax_label], current_df["Restschuld"], color="blue", label="Restschuld")
     ax1.set_ylabel("Restschuld (€)", color="blue")
@@ -123,14 +132,7 @@ if darlehen > 0:
 
     ax2 = ax1.twinx()
     l2, = ax2.plot(current_df[x_ax_label], current_df["Zins"], color="red", linestyle="--", label="Zins")
-
-    if view_m and s_euro > 0:
-        reg_tilg = current_df["Tilgung"].copy()
-        for i in range(len(reg_tilg)):
-            if (i + 1) % 12 == 0: reg_tilg.iloc[i] -= s_euro
-        l3, = ax2.plot(current_df[x_ax_label], reg_tilg, color="green", linestyle="-.", label="Tilgung")
-    else:
-        l3, = ax2.plot(current_df[x_ax_label], current_df["Tilgung"], color="green", linestyle="-.", label="Tilgung")
+    l3, = ax2.plot(current_df[x_ax_label], current_df["Tilgung"], color="green", linestyle="-.", label="Tilgung")
 
     ax2.set_ylabel("Zins / Tilgung (€)")
     ax1.legend(handles=[l1, l2, l3], loc='upper center', bbox_to_anchor=(0.5, -0.28), ncol=3, frameon=False)
@@ -140,6 +142,7 @@ if darlehen > 0:
         st.dataframe(current_df.map(lambda x: format_de(x) if isinstance(x, (int, float)) and x > 50 else x),
                      use_container_width=True, hide_index=True)
 
+    # Ergebniskarten
     lz_t = f"{m // 12} J. {m % 12} M."
     st.markdown(f"""
     <div class="result-container">
@@ -150,8 +153,8 @@ if darlehen > 0:
     """, unsafe_allow_html=True)
 
 
-    # --- PDF LOGIK MIT TEMPORÄRER DATEI (SICHERSTE METHODE) ---
-    def generate_pdf_final(df_data, d_sum, z_g, lz_text, x_label, figure):
+    # PDF Erzeugung Funktion
+    def generate_pdf(df_data, d_sum, z_g, lz_text, x_label, figure):
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Helvetica", "B", 18)
@@ -163,15 +166,12 @@ if darlehen > 0:
         pdf.cell(0, 8, f"Laufzeit: {lz_text}", ln=True)
         pdf.ln(5)
 
-        # Diagramm als echte Datei speichern
-        tmp_img_path = os.path.join(tempfile.gettempdir(), "plot.png")
-        figure.savefig(tmp_img_path, format="png", bbox_inches='tight', dpi=120)
-
-        # Bild in PDF laden
-        pdf.image(tmp_img_path, x=15, w=180)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmpfile:
+            figure.savefig(tmpfile.name, format="png", bbox_inches='tight', dpi=150)
+            pdf.image(tmpfile.name, x=15, w=180)
+            tmp_path = tmpfile.name
         pdf.ln(5)
 
-        # Tabelle
         pdf.set_font("Helvetica", "B", 10)
         pdf.set_fill_color(230, 230, 230)
         pdf.cell(25, 10, x_label, border=1, fill=True)
@@ -182,32 +182,28 @@ if darlehen > 0:
 
         pdf.set_font("Helvetica", "", 9)
         for _, row in df_data.iterrows():
-            if pdf.get_y() > 265: pdf.add_page()
+            if pdf.get_y() > 260: pdf.add_page()
             pdf.cell(25, 7, str(int(row[x_label])), border=1)
             pdf.cell(50, 7, format_de(row["Zins"]).replace('€', '').strip(), border=1)
             pdf.cell(50, 7, format_de(row["Tilgung"]).replace('€', '').strip(), border=1)
             pdf.cell(50, 7, format_de(row["Restschuld"]).replace('€', '').strip(), border=1)
             pdf.ln()
 
-        pdf_out = bytes(pdf.output())
-
-        # Temp Datei löschen
-        if os.path.exists(tmp_img_path):
-            os.remove(tmp_img_path)
-
-        return pdf_out
+        output = pdf.output()
+        if os.path.exists(tmp_path): os.remove(tmp_path)
+        return bytes(output)
 
 
-    # PDF Erzeugung versuchen
+    # Ausführung der PDF-Generierung & Zentrierter Button
     try:
-        pdf_data = generate_pdf_final(current_df, darlehen, gz, lz_t, x_ax_label, fig)
+        pdf_bytes = generate_pdf(current_df, darlehen, gz, lz_t, x_ax_label, fig)
 
-        # Download-Button in zentrierter Spalte
-        col1, col2, col3 = st.columns(3)
+        # Button exakt mittig unter die Karten platzieren
+        col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             st.download_button(
                 label="📄 PDF speichern?",
-                data=pdf_data,
+                data=pdf_bytes,
                 file_name="Finanzprognose.pdf",
                 mime="application/pdf",
                 use_container_width=True
