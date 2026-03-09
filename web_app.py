@@ -21,20 +21,15 @@ st.markdown("""
     .main-header { background-color: blue; padding: 10px; border-radius: 8px; text-align: center; color: white; margin-bottom: 20px; }
     .main-header h2 { margin: 0; font-size: 20px; }
     .main-header p { margin: 0; font-size: 14px; font-style: italic; }
-
     .kosten-liste { background-color: #f8f9fa; padding: 15px; border-radius: 12px; font-size: 0.9rem; border: 1px solid #e9ecef; margin-bottom: 20px; }
     .flex-row { display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding: 4px 0; }
     .total-row { border-top: 2px solid #333; margin-top: 8px; padding-top: 8px; font-weight: bold; }
-
     .view-toggle-box { background-color: #e8f0fe; padding: 10px; border-radius: 8px; border: 1px solid blue; margin-bottom: 10px; display: flex; align-items: center; justify-content: center; }
-
-    /* Karten Design */
     .result-container { display: flex; justify-content: space-between; gap: 8px; margin: 20px 0 5px 0; flex-wrap: wrap; }
     .result-card { background: white; padding: 10px; border-radius: 10px; text-align: center; flex: 1; min-width: 100px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 1px solid #f0f0f0; }
     .card-label { font-size: 0.65rem; color: #666; font-weight: 600; text-transform: uppercase; display: block; }
     .card-value { font-size: 0.95rem; color: #1a1a1a; font-weight: 800; display: block; margin-top: 3px; }
 
-    /* PDF Button Style */
     div.stDownloadButton > button {
         background-color: #ff4b4b !important; 
         color: white !important; 
@@ -116,7 +111,6 @@ if darlehen > 0:
         if rest <= 0.01: break
         m += 1
 
-    # Toggle & Diagramm
     st.markdown('<div class="view-toggle-box">', unsafe_allow_html=True)
     view_m = st.toggle("🔍 Monatsansicht aktivieren", value=False)
     st.markdown('</div>', unsafe_allow_html=True)
@@ -148,7 +142,6 @@ if darlehen > 0:
         st.dataframe(current_df.map(lambda x: format_de(x) if isinstance(x, (int, float)) and x > 50 else x),
                      use_container_width=True, hide_index=True)
 
-    # Ergebniskarten
     lz_t = f"{m // 12} J. {m % 12} M."
     st.markdown(f"""
     <div class="result-container">
@@ -159,7 +152,7 @@ if darlehen > 0:
     """, unsafe_allow_html=True)
 
 
-    # PDF Funktion
+    # PDF Erzeugung mit fpdf2 FIX
     def generate_pdf(df_data, d_sum, z_g, lz_text, x_label, figure):
         pdf = FPDF()
         pdf.add_page()
@@ -195,16 +188,22 @@ if darlehen > 0:
             pdf.cell(50, 7, format_de(row["Restschuld"]).replace('€', '').strip(), border=1)
             pdf.ln()
 
-        pdf_output = pdf.output()
-        if os.path.exists(tmp_path): os.remove(tmp_path)
-        return bytes(pdf_output)  # Wichtig für Streamlit
+        # WICHTIGER FIX FÜR LINE 200/203: Explizite Konvertierung zu bytes
+        pdf_bytes = pdf.output()
+        if isinstance(pdf_bytes, bytearray):
+            pdf_bytes = bytes(pdf_bytes)
+
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        return pdf_bytes
 
 
+    # PDF Daten generieren
     final_pdf_data = generate_pdf(current_df, darlehen, gz, lz_t, x_ax_label, fig)
 
-    # PDF Button exakt zentriert unter die mittlere Karte
-    col1, col2, col3 = st.columns(3)
-    with col2:
+    # Download-Button zentriert platzieren (Line 203)
+    c1, c2, c3 = st.columns(3)
+    with c2:
         st.download_button(
             label="📄 PDF speichern?",
             data=final_pdf_data,
