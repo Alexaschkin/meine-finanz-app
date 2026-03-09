@@ -3,8 +3,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from fpdf import FPDF
 import io
+import tempfile
+import os
 
-# Mobile Optimierung
+# Mobile Optimierung & Layout
 st.set_page_config(page_title="Finanz-Check AH", layout="centered")
 
 
@@ -16,12 +18,29 @@ def format_de(wert):
 # CSS für Styling
 st.markdown("""
     <style>
-    .main-header { background-color: blue; padding: 10px; border-radius: 8px; text-align: center; color: white; margin-bottom: 15px; }
+    .main-header { background-color: blue; padding: 10px; border-radius: 8px; text-align: center; color: white; margin-bottom: 20px; }
     .main-header h2 { margin: 0; font-size: 20px; }
     .main-header p { margin: 0; font-size: 14px; font-style: italic; }
-    .kosten-liste { background-color: #f0f2f6; padding: 12px; border-radius: 10px; font-size: 0.85rem; font-weight: bold; line-height: 1.4; }
-    .flex-row { display: flex; justify-content: space-between; border-bottom: 1px solid #ddd; padding: 2px 0; }
-    .total-row { border-top: 2px solid #333; margin-top: 5px; padding-top: 5px; font-size: 0.95rem; }
+    .kosten-liste { background-color: #f8f9fa; padding: 15px; border-radius: 12px; font-size: 0.9rem; border: 1px solid #e9ecef; margin-bottom: 20px; }
+    .flex-row { display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding: 4px 0; }
+    .total-row { border-top: 2px solid #333; margin-top: 8px; padding-top: 8px; font-weight: bold; }
+    .view-toggle-box { background-color: #e8f0fe; padding: 10px; border-radius: 8px; border: 1px solid blue; margin-bottom: 10px; display: flex; align-items: center; justify-content: center; }
+    .result-container { display: flex; justify-content: space-between; gap: 8px; margin: 20px 0 5px 0; flex-wrap: wrap; }
+    .result-card { background: white; padding: 10px; border-radius: 10px; text-align: center; flex: 1; min-width: 100px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 1px solid #f0f0f0; }
+    .card-label { font-size: 0.65rem; color: #666; font-weight: 600; text-transform: uppercase; display: block; }
+    .card-value { font-size: 0.95rem; color: #1a1a1a; font-weight: 800; display: block; margin-top: 3px; }
+
+    div.stDownloadButton > button {
+        background-color: #ff4b4b !important; 
+        color: white !important; 
+        border-radius: 8px !important;
+        padding: 8px 15px !important; 
+        font-size: 14px !important; 
+        font-weight: bold !important;
+        border: none !important; 
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
+        width: 100%;
+    }
     </style>
     <div class="main-header">
         <h2>Finanz-Check</h2>
@@ -29,7 +48,7 @@ st.markdown("""
     </div>
     """, unsafe_allow_html=True)
 
-with st.expander("Eingabedaten hier anpassen", expanded=True):
+with st.expander("📝 Eingabedaten anpassen", expanded=True):
     col_a, col_b = st.columns(2)
     with col_a:
         preis = st.number_input("Kaufpreis (€)", value=350000, step=5000)
@@ -39,9 +58,10 @@ with st.expander("Eingabedaten hier anpassen", expanded=True):
     with col_b:
         zins = st.number_input("Sollzins p.a. (%)", value=3.8, step=0.1, format="%.2f")
         sonti_p = st.number_input("Sondertilgung p.a. (%)", value=1.0, step=0.5)
-        makler_an = st.checkbox("Makler (3,57%)", value=True)
+        makler_aktiv = st.checkbox("Makler involviert", value=True)
+        makler_p = st.number_input("Maklerprovision (%)", value=3.57, step=0.01, disabled=not makler_aktiv)
 
-    m_kosten = preis * 0.0357 if makler_an else 0
+    m_kosten = preis * (makler_p / 100) if makler_aktiv else 0
     g_kosten = preis * (grunderwerb_p / 100)
     n_kosten = preis * (notar_p / 100)
     nebenkosten_gesamt = m_kosten + g_kosten + n_kosten
@@ -53,121 +73,135 @@ with st.expander("Eingabedaten hier anpassen", expanded=True):
         <div class="flex-row"><span>Kaufpreis:</span><span>{format_de(preis)}</span></div>
         <div class="flex-row"><span>Grunderwerbsteuer ({grunderwerb_p}%):</span><span>{format_de(g_kosten)}</span></div>
         <div class="flex-row"><span>Notar & Grundbuch ({notar_p}%):</span><span>{format_de(n_kosten)}</span></div>
-        <div class="flex-row"><span>Maklergebühr (3,57%):</span><span>{format_de(m_kosten)}</span></div>
+        <div class="flex-row"><span>Maklergebühr ({makler_p if makler_aktiv else 0}%):</span><span>{format_de(m_kosten)}</span></div>
         <div class="flex-row"><span>Eigenkapital:</span><span>- {format_de(ek)}</span></div>
         <div class="flex-row total-row"><span>GESAMTBEDARF:</span><span>{format_de(gesamtkosten)}</span></div>
-        <div class="flex-row" style="color: blue;"><span>DARLEHENSBEDARF:</span><span>{format_de(rechnerischer_bedarf)}</span></div>
+        <div class="flex-row" style="color: blue; font-weight: bold;"><span>DARLEHENSBEDARF:</span><span>{format_de(rechnerischer_bedarf)}</span></div>
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    darlehen = st.number_input("Tatsächliche Darlehenssumme zur Berechnung (€)",
-                               value=float(round(rechnerischer_bedarf, -2)),
+    darlehen = st.number_input("Tatsächliche Darlehenssumme (€)", value=float(round(rechnerischer_bedarf, -2)),
                                step=1000.0)
-
-    st.markdown("---")
     t_art = st.radio("Tilgungswahl:", ["in % p.a.", "in € monatlich"], horizontal=True)
-    label_tilg = "Anfängliche Tilgung (%)" if "%" in t_art else "Zusatztilgung (€/Monat)"
-    t_val = st.number_input(label_tilg, value=2.0 if "%" in t_art else 500.0, step=0.1 if "%" in t_art else 50.0)
+    t_val = st.number_input("Tilgungswert", value=2.0 if "%" in t_art else 500.0)
 
 if darlehen > 0:
     z_dez = zins / 100
     rate_m = (darlehen * (z_dez + (t_val / 100)) / 12) if "in % p.a." in t_art else (darlehen * (z_dez / 12) + t_val)
 
-    st.markdown("---")
-    m1, m2 = st.columns(2)
-    m1.metric("Gewähltes Darlehen", format_de(darlehen))
-    m2.metric("Monatliche Rate", format_de(rate_m))
-
-    view_m = st.toggle("Detaillierte Monatsansicht", value=False)
-
-    plan = []
-    rest = darlehen
-    m = 1
-    gz = 0
+    plan_m, plan_j = [], []
+    rest, m, gz = darlehen, 1, 0
     s_euro = darlehen * (sonti_p / 100)
-    jahr_zins_akk, jahr_tilg_akk = 0, 0
+    j_zins, j_tilg = 0, 0
 
-    while rest > 0.1 and m <= 600:
+    while rest > 0.01 and m <= 600:
         zm = rest * (z_dez / 12)
         tm = min(rest, rate_m - zm)
-        sj = min(rest - tm, s_euro) if m % 12 == 0 and rest > s_euro else 0
-        rest -= (tm + sj)
+        sj = min(rest - tm, s_euro) if m % 12 == 0 and (rest - tm) > 0 else 0
+        cur_tilg = tm + sj
+        rest -= cur_tilg
         gz += zm
-        jahr_zins_akk += zm
-        jahr_tilg_akk += (tm + sj)
-
-        if view_m:
-            plan.append({"Monat": m, "Zins": zm, "Tilgung": (tm + sj), "Restschuld": max(0.0, rest)})
-
-        if m % 12 == 0 or rest <= 0.1:
-            if not view_m:
-                jahr = int(m / 12 if m % 12 == 0 else m // 12 + 1)
-                plan.append(
-                    {"Jahr": jahr, "Zins": jahr_zins_akk, "Tilgung": jahr_tilg_akk, "Restschuld": max(0.0, rest)})
-            jahr_zins_akk, jahr_tilg_akk = 0, 0
+        j_zins += zm
+        j_tilg += cur_tilg
+        plan_m.append({"Monat": m, "Zins": zm, "Tilgung": cur_tilg, "Restschuld": max(0, rest)})
+        if m % 12 == 0 or rest <= 0.01:
+            plan_j.append({"Jahr": (m // 12 if m % 12 == 0 else m // 12 + 1), "Zins": j_zins, "Tilgung": j_tilg,
+                           "Restschuld": max(0, rest)})
+            j_zins, j_tilg = 0, 0
+        if rest <= 0.01: break
         m += 1
 
-    df = pd.DataFrame(plan)
+    st.markdown('<div class="view-toggle-box">', unsafe_allow_html=True)
+    view_m = st.toggle("🔍 Monatsansicht aktivieren", value=False)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    # Grafik
-    fig, ax = plt.subplots(figsize=(8, 3))
-    x_axis = "Monat" if view_m else "Jahr"
-    ax.plot(df[x_axis], df["Restschuld"], color="blue", linewidth=2)
-    ax.set_ylabel("Restbetrag (€)")
-    ax.grid(True, linestyle="--", alpha=0.6)
+    current_df = pd.DataFrame(plan_m) if view_m else pd.DataFrame(plan_j)
+    x_ax_label = "Monat" if view_m else "Jahr"
+
+    # Diagramm mit X-Achsen Beschriftung
+    fig, ax1 = plt.subplots(figsize=(8, 4))
+    l1, = ax1.plot(current_df[x_ax_label], current_df["Restschuld"], color="blue", label="Restschuld")
+    ax1.set_ylabel("Restschuld (€)", color="blue")
+
+    # NEU: Beschriftung unter den Zahlen der X-Achse
+    ax1.set_xlabel("Laufzeit in Jahren" if not view_m else "Laufzeit in Monaten", fontsize=10, fontweight='bold')
+
+    ax2 = ax1.twinx()
+    l2, = ax2.plot(current_df[x_ax_label], current_df["Zins"], color="red", linestyle="--", label="Zins")
+
+    if view_m and s_euro > 0:
+        reg_tilg = current_df["Tilgung"].copy()
+        for i in range(len(reg_tilg)):
+            if (i + 1) % 12 == 0: reg_tilg.iloc[i] -= s_euro
+        l3, = ax2.plot(current_df[x_ax_label], reg_tilg, color="green", linestyle="-.", label="Tilgung")
+    else:
+        l3, = ax2.plot(current_df[x_ax_label], current_df["Tilgung"], color="green", linestyle="-.", label="Tilgung")
+
+    ax2.set_ylabel("Zins / Tilgung (€)")
+    # Legende etwas tiefer schieben (bbox_to_anchor angepasst)
+    ax1.legend(handles=[l1, l2, l3], loc='upper center', bbox_to_anchor=(0.5, -0.28), ncol=3, frameon=False)
     st.pyplot(fig)
 
-    # Tabelle formatieren
-    df_display = df.copy()
-    for col in ["Zins", "Tilgung", "Restschuld"]:
-        df_display[col] = df_display[col].apply(format_de)
+    with st.expander("📊 Tabelle anzeigen", expanded=False):
+        st.dataframe(current_df.map(lambda x: format_de(x) if isinstance(x, (int, float)) and x > 50 else x),
+                     use_container_width=True, hide_index=True)
 
-    st.dataframe(df_display, use_container_width=True, hide_index=True)
-    st.success(f"**Zinsen gesamt:** {format_de(gz)} | **Gesamtkosten:** {format_de(darlehen + gz)}")
+    lz_t = f"{m // 12} J. {m % 12} M."
+    st.markdown(f"""
+    <div class="result-container">
+        <div class="result-card"><span class="card-label">Ges. Zinsen</span><span class="card-value">{format_de(gz)}</span></div>
+        <div class="result-card"><span class="card-label">Gesamtkosten</span><span class="card-value">{format_de(darlehen + gz)}</span></div>
+        <div class="result-card"><span class="card-label">Laufzeit in Jahren</span><span class="card-value">{lz_t}</span></div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
-    # --- PDF LOGIK ---
-    def generate_pdf(data, d_sum, r_m, z_g):
+    def generate_pdf(df_data, d_sum, z_g, lz_text, x_label, figure):
         pdf = FPDF()
         pdf.add_page()
-        pdf.set_font("Helvetica", "B", 16)
-        pdf.cell(0, 10, "Finanzierungsprognose - Alex Heide", ln=True, align="C")
+        pdf.set_font("Helvetica", "B", 18)
+        pdf.cell(0, 15, "Finanzprognose", ln=True, align="C")
+        pdf.ln(5)
+        pdf.set_font("Helvetica", "", 12)
+        pdf.cell(0, 8, f"Darlehenssumme: {format_de(d_sum).replace('€', 'EUR')}", ln=True)
+        pdf.cell(0, 8, f"Gesamtzinsen: {format_de(z_g).replace('€', 'EUR')}", ln=True)
+        pdf.cell(0, 8, f"Laufzeit: {lz_text}", ln=True)
         pdf.ln(5)
 
-        pdf.set_font("Helvetica", "", 12)
-        pdf.cell(0, 10, f"Darlehenssumme: {format_de(d_sum).replace('€', 'EUR')}", ln=True)
-        pdf.cell(0, 10, f"Monatliche Rate: {format_de(r_m).replace('€', 'EUR')}", ln=True)
-        pdf.cell(0, 10, f"Gesamtzinsen: {format_de(z_g).replace('€', 'EUR')}", ln=True)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmpfile:
+            figure.savefig(tmpfile.name, format="png", bbox_inches='tight', dpi=150)
+            pdf.image(tmpfile.name, x=15, w=180)
+            tmp_path = tmpfile.name
         pdf.ln(5)
 
         pdf.set_font("Helvetica", "B", 10)
-        pdf.set_fill_color(200, 220, 255)
-        pdf.cell(25, 10, "Zeit", border=1, fill=True)
+        pdf.set_fill_color(230, 230, 230)
+        pdf.cell(25, 10, x_label, border=1, fill=True)
         pdf.cell(50, 10, "Zins (EUR)", border=1, fill=True)
         pdf.cell(50, 10, "Tilgung (EUR)", border=1, fill=True)
         pdf.cell(50, 10, "Restschuld (EUR)", border=1, fill=True)
         pdf.ln()
 
-        pdf.set_font("Helvetica", "", 10)
-        for _, row in data.iterrows():
-            pdf.cell(25, 8, str(row[x_axis]), border=1)
-            pdf.cell(50, 8, row["Zins"].replace('€', '').strip(), border=1)
-            pdf.cell(50, 8, row["Tilgung"].replace('€', '').strip(), border=1)
-            pdf.cell(50, 8, row["Restschuld"].replace('€', '').strip(), border=1)
+        pdf.set_font("Helvetica", "", 9)
+        for _, row in df_data.iterrows():
+            if pdf.get_y() > 260: pdf.add_page()
+            pdf.cell(25, 7, str(int(row[x_label])), border=1)
+            pdf.cell(50, 7, format_de(row["Zins"]).replace('€', '').strip(), border=1)
+            pdf.cell(50, 7, format_de(row["Tilgung"]).replace('€', '').strip(), border=1)
+            pdf.cell(50, 7, format_de(row["Restschuld"]).replace('€', '').strip(), border=1)
             pdf.ln()
 
-        return pdf.output()
+        output_bytes = pdf.output()
+        if os.path.exists(tmp_path): os.remove(tmp_path)
+        return output_bytes
 
 
-    # Download Button
-    pdf_bytes = generate_pdf(df_display, darlehen, rate_m, gz)
-    st.download_button(
-        label="📄 Ergebnis als PDF speichern",
-        data=bytes(pdf_bytes),  # Wichtig für Online-Server
-        file_name="Finanzcheck_Ergebnis.pdf",
-        mime="application/pdf"
-    )
+    pdf_b = generate_pdf(current_df, darlehen, gz, lz_t, x_ax_label, fig)
+
+    col1, col2, col3 = st.columns(3)
+    with col2:
+        st.download_button("📄 PDF speichern?", data=bytes(pdf_b), file_name="Finanzprognose.pdf",
+                           mime="application/pdf", use_container_width=True)
 
 else:
     st.warning("Kein Darlehen erforderlich.")
