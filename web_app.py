@@ -3,7 +3,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from fpdf import FPDF
 import io
-import tempfile
 import os
 
 # Mobile Optimierung & Layout
@@ -39,6 +38,7 @@ st.markdown("""
         font-weight: bold !important;
         border: none !important; 
         box-shadow: 0 4px 10px rgba(0,0,0,0.2) !important;
+        width: 100%;
     }
     </style>
     <div class="main-header">
@@ -152,8 +152,8 @@ if darlehen > 0:
     """, unsafe_allow_html=True)
 
 
-    # PDF Erzeugung mit fpdf2 (Vermeidung von Fehlern auf Web-Servern)
-    def generate_pdf_bytes(df_data, d_sum, z_g, lz_text, x_label, figure):
+    # PDF Erzeugung Funktion - FIX FÜR BYTEARRAY FEHLER
+    def generate_pdf_data(df_data, d_sum, z_g, lz_text, x_label, figure):
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Helvetica", "B", 18)
@@ -165,13 +165,11 @@ if darlehen > 0:
         pdf.cell(0, 8, f"Laufzeit: {lz_text}", ln=True)
         pdf.ln(5)
 
-        # Diagramm als PNG in temporäre Datei speichern (sicherste Methode)
-        tmp_path = ""
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
-            figure.savefig(tmp.name, format="png", bbox_inches='tight', dpi=120)
-            tmp_path = tmp.name
-
-        pdf.image(tmp_path, x=15, w=180)
+        # Diagramm als Bild-Stream einbetten
+        img_buf = io.BytesIO()
+        figure.savefig(img_buf, format="png", bbox_inches='tight', dpi=120)
+        img_buf.seek(0)
+        pdf.image(img_buf, x=15, w=180)
         pdf.ln(5)
 
         pdf.set_font("Helvetica", "B", 10)
@@ -191,28 +189,26 @@ if darlehen > 0:
             pdf.cell(50, 7, format_de(row["Restschuld"]).replace('€', '').strip(), border=1)
             pdf.ln()
 
-        pdf_bytes = pdf.output()
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-
-        return bytes(pdf_bytes)
+        # DER ENTSCHEIDENDE FIX: Rückgabe IMMER als bytes()
+        return bytes(pdf.output())
 
 
-    # Versuch der PDF-Generierung für den Download-Button
+    # Ausführung der PDF-Generierung
     try:
-        final_pdf = generate_pdf_bytes(current_df, darlehen, gz, lz_t, x_ax_label, fig)
+        final_pdf_bytes = generate_pdf_data(current_df, darlehen, gz, lz_t, x_ax_label, fig)
 
+        # Download-Button in zentrierter Spalte
         col1, col2, col3 = st.columns(3)
         with col2:
             st.download_button(
                 label="📄 PDF speichern?",
-                data=final_pdf,
+                data=final_pdf_bytes,
                 file_name="Finanzprognose.pdf",
                 mime="application/pdf",
                 use_container_width=True
             )
     except Exception as e:
-        st.error(f"Fehler: {e}")
+        st.error(f"Fehler bei der PDF-Erstellung: {e}")
 
 else:
     st.warning("Kein Darlehen erforderlich.")
