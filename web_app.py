@@ -152,8 +152,8 @@ if darlehen > 0:
     """, unsafe_allow_html=True)
 
 
-    # PDF Erzeugung mit fpdf2 FIX
-    def generate_pdf(df_data, d_sum, z_g, lz_text, x_label, figure):
+    # PDF Erzeugung mit fpdf2 (Vermeidung von Bytearray-Fehlern)
+    def create_pdf_bytes(df_data, d_sum, z_g, lz_text, x_label, figure):
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Helvetica", "B", 18)
@@ -165,10 +165,11 @@ if darlehen > 0:
         pdf.cell(0, 8, f"Laufzeit: {lz_text}", ln=True)
         pdf.ln(5)
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmpfile:
-            figure.savefig(tmpfile.name, format="png", bbox_inches='tight', dpi=150)
-            pdf.image(tmpfile.name, x=15, w=180)
-            tmp_path = tmpfile.name
+        # Diagramm als PNG in Buffer speichern
+        buf = io.BytesIO()
+        figure.savefig(buf, format="png", bbox_inches='tight', dpi=120)
+        buf.seek(0)
+        pdf.image(buf, x=15, w=180)
         pdf.ln(5)
 
         pdf.set_font("Helvetica", "B", 10)
@@ -181,36 +182,32 @@ if darlehen > 0:
 
         pdf.set_font("Helvetica", "", 9)
         for _, row in df_data.iterrows():
-            if pdf.get_y() > 260: pdf.add_page()
+            if pdf.get_y() > 265: pdf.add_page()
             pdf.cell(25, 7, str(int(row[x_label])), border=1)
             pdf.cell(50, 7, format_de(row["Zins"]).replace('€', '').strip(), border=1)
             pdf.cell(50, 7, format_de(row["Tilgung"]).replace('€', '').strip(), border=1)
             pdf.cell(50, 7, format_de(row["Restschuld"]).replace('€', '').strip(), border=1)
             pdf.ln()
 
-        # WICHTIGER FIX FÜR LINE 200/203: Explizite Konvertierung zu bytes
-        pdf_bytes = pdf.output()
-        if isinstance(pdf_bytes, bytearray):
-            pdf_bytes = bytes(pdf_bytes)
-
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-        return pdf_bytes
+        return bytes(pdf.output())
 
 
-    # PDF Daten generieren
-    final_pdf_data = generate_pdf(current_df, darlehen, gz, lz_t, x_ax_label, fig)
+    # PDF-Generierung
+    try:
+        pdf_data = create_pdf_bytes(current_df, darlehen, gz, lz_t, x_ax_label, fig)
 
-    # Download-Button zentriert platzieren (Line 203)
-    c1, c2, c3 = st.columns(3)
-    with c2:
-        st.download_button(
-            label="📄 PDF speichern?",
-            data=final_pdf_data,
-            file_name="Finanzprognose.pdf",
-            mime="application/pdf",
-            use_container_width=True
-        )
+        # Download-Button zentriert
+        c1, c2, c3 = st.columns(3)
+        with c2:
+            st.download_button(
+                label="📄 PDF speichern?",
+                data=pdf_data,
+                file_name="Finanzprognose.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+    except Exception as e:
+        st.error(f"Fehler bei der PDF-Erstellung: {e}")
 
 else:
     st.warning("Kein Darlehen erforderlich.")
