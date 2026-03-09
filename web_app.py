@@ -4,16 +4,16 @@ from fpdf import FPDF
 import matplotlib.pyplot as plt
 import io
 
-# Layout-Einstellungen
+# 1. Layout-Einstellungen
 st.set_page_config(page_title="Finanz-Check AH", layout="centered")
 
 
-# Hilfsfunktion für deutsches Zahlenformat
+# 2. Hilfsfunktion für deutsches Zahlenformat
 def format_de(wert):
     return f"{wert:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") + " €"
 
 
-# CSS für Styling und Button-Zentrierung
+# 3. CSS für Styling und Mobile-Optimierung
 st.markdown("""
     <style>
     .main-header { background-color: blue; padding: 10px; border-radius: 8px; text-align: center; color: white; margin-bottom: 20px; }
@@ -28,12 +28,17 @@ st.markdown("""
     .card-label { font-size: 0.65rem; color: #666; font-weight: 600; text-transform: uppercase; display: block; }
     .card-value { font-size: 0.95rem; color: #1a1a1a; font-weight: 800; display: block; margin-top: 3px; }
 
-    /* PDF Button Zentrierung */
-    div.stDownloadButton { display: flex; justify-content: center; width: 100%; margin-top: 10px; }
+    /* PDF Button - Volle Breite für Smartphone */
+    div.stDownloadButton { display: flex; justify-content: center; width: 100%; margin-top: 15px; margin-bottom: 40px; }
     div.stDownloadButton > button {
-        background-color: #ff4b4b !important; color: white !important; border-radius: 8px !important;
-        padding: 10px 25px !important; font-size: 15px !important; font-weight: bold !important;
-        border: none !important; box-shadow: 0 4px 10px rgba(0,0,0,0.2) !important;
+        width: 100% !important;
+        background-color: #ff4b4b !important;
+        color: white !important;
+        padding: 18px !important;
+        font-weight: bold !important;
+        border-radius: 12px !important;
+        border: none !important;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2) !important;
     }
     </style>
     <div class="main-header">
@@ -42,6 +47,7 @@ st.markdown("""
     </div>
     """, unsafe_allow_html=True)
 
+# 4. Eingaben
 with st.expander("📝 Eingabedaten anpassen", expanded=True):
     col_a, col_b = st.columns(2)
     with col_a:
@@ -65,7 +71,7 @@ with st.expander("📝 Eingabedaten anpassen", expanded=True):
     st.markdown(f"""
     <div class="kosten-liste">
         <div class="flex-row"><span>Kaufpreis:</span><span>{format_de(preis)}</span></div>
-        <div class="flex-row"><span>Nebenkosten ({notar_p + grunderwerb_p + (makler_p if makler_aktiv else 0)}%):</span><span>{format_de(nebenkosten_gesamt)}</span></div>
+        <div class="flex-row"><span>Nebenkosten:</span><span>{format_de(nebenkosten_gesamt)}</span></div>
         <div class="flex-row"><span>Eigenkapital:</span><span>- {format_de(ek)}</span></div>
         <div class="flex-row total-row"><span>GESAMTBEDARF:</span><span>{format_de(gesamtkosten)}</span></div>
         <div class="flex-row" style="color: blue; font-weight: bold;"><span>DARLEHENSBEDARF:</span><span>{format_de(rechnerischer_bedarf)}</span></div>
@@ -77,6 +83,7 @@ with st.expander("📝 Eingabedaten anpassen", expanded=True):
     t_art = st.radio("Tilgungswahl:", ["in % p.a.", "in € monatlich"], horizontal=True)
     t_val = st.number_input("Tilgungswert", value=2.0 if "%" in t_art else 500.0)
 
+# 5. Berechnung
 if darlehen > 0:
     z_dez = zins / 100
     rate_m = (darlehen * (z_dez + (t_val / 100)) / 12) if "in % p.a." in t_art else (darlehen * (z_dez / 12) + t_val)
@@ -102,11 +109,12 @@ if darlehen > 0:
         if rest <= 0.01: break
         m += 1
 
+    # Graph
     fig, ax1 = plt.subplots(figsize=(8, 4))
     df_p = pd.DataFrame(plan_j)
     ax1.plot(df_p["Jahr"], df_p["Restschuld"], color="blue", label="Restschuld")
     ax1.set_ylabel("Restschuld (€)", color="blue")
-    ax1.set_xlabel("Laufzeit in Jahren", fontsize=10, fontweight='bold')
+    ax1.set_xlabel("Laufzeit in Jahren", fontweight='bold')
     ax2 = ax1.twinx()
     ax2.plot(df_p["Jahr"], df_p["Zins"], color="red", linestyle="--", label="Zins")
     ax2.plot(df_p["Jahr"], df_p["Tilgung"], color="green", linestyle="-.", label="Tilgung")
@@ -114,72 +122,57 @@ if darlehen > 0:
     ax1.legend(loc='upper center', bbox_to_anchor=(0.5, -0.28), ncol=3, frameon=False)
     st.pyplot(fig)
 
-    st.markdown('<div class="view-toggle-box">', unsafe_allow_html=True)
-    view_m = st.toggle("🔍 Monatsansicht aktivieren", value=False)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    with st.expander("📊 Tabelle anzeigen", expanded=False):
-        current_df = pd.DataFrame(plan_m) if view_m else pd.DataFrame(plan_j)
-        st.dataframe(current_df.map(lambda x: format_de(x) if isinstance(x, (int, float)) and x > 50 else x),
-                     use_container_width=True, hide_index=True)
-
+    # 6. Ergebnisse anzeigen
     lz_t = f"{m // 12} J. {m % 12} M."
     st.markdown(f"""
     <div class="result-container">
         <div class="result-card"><span class="card-label">Ges. Zinsen</span><span class="card-value">{format_de(gz)}</span></div>
         <div class="result-card"><span class="card-label">Gesamtkosten</span><span class="card-value">{format_de(darlehen + gz)}</span></div>
-        <div class="result-card"><span class="card-label">Laufzeit in Jahren</span><span class="card-value">{lz_t}</span></div>
+        <div class="result-card"><span class="card-label">Laufzeit</span><span class="card-value">{lz_t}</span></div>
     </div>
     """, unsafe_allow_html=True)
 
 
-    # PDF Erzeugung OHNE BILD (Maximale Stabilität)
-    def generate_pdf_final(df_data, d_sum, z_g, lz_text, x_label):
+    # 7. PDF Logik (Fix: kein .encode() auf bytearray)
+    def generate_pdf_bytes(data_list, d_sum, z_g, lz_text):
         pdf = FPDF()
         pdf.add_page()
-        pdf.set_font("Helvetica", "B", 18)
-        pdf.cell(0, 15, "Finanzprognose", ln=True, align="C")
+        pdf.set_font("Helvetica", "B", 16)
+        pdf.cell(0, 10, "Finanz-Check AH - Ergebnis", ln=True, align="C")
         pdf.ln(10)
         pdf.set_font("Helvetica", "", 12)
         pdf.cell(0, 10, f"Darlehenssumme: {format_de(d_sum).replace('€', 'EUR')}", ln=True)
         pdf.cell(0, 10, f"Gesamtzinsen: {format_de(z_g).replace('€', 'EUR')}", ln=True)
         pdf.cell(0, 10, f"Laufzeit: {lz_text}", ln=True)
-        pdf.ln(10)
+        pdf.ln(5)
 
         pdf.set_font("Helvetica", "B", 10)
-        pdf.set_fill_color(230, 230, 230)
-        pdf.cell(25, 10, x_label, border=1, fill=True)
-        pdf.cell(50, 10, "Zins (EUR)", border=1, fill=True)
-        pdf.cell(50, 10, "Tilgung (EUR)", border=1, fill=True)
-        pdf.cell(50, 10, "Restschuld (EUR)", border=1, fill=True)
-        pdf.ln()
+        pdf.cell(30, 10, "Jahr", border=1)
+        pdf.cell(45, 10, "Zins (EUR)", border=1)
+        pdf.cell(45, 10, "Tilgung (EUR)", border=1)
+        pdf.cell(45, 10, "Restschuld (EUR)", border=1, ln=True)
 
-        pdf.set_font("Helvetica", "", 9)
-        for _, row in df_data.iterrows():
-            if pdf.get_y() > 260: pdf.add_page()
-            pdf.cell(25, 8, str(int(row[x_label])), border=1)
-            pdf.cell(50, 8, format_de(row["Zins"]).replace('€', '').strip(), border=1)
-            pdf.cell(50, 8, format_de(row["Tilgung"]).replace('€', '').strip(), border=1)
-            pdf.cell(50, 8, format_de(row["Restschuld"]).replace('€', '').strip(), border=1)
-            pdf.ln()
+        pdf.set_font("Helvetica", "", 10)
+        for row in data_list[:120]:
+            pdf.cell(30, 8, str(row.get("Jahr", row.get("Monat"))), border=1)
+            pdf.cell(45, 8, format_de(row["Zins"]).replace('€', ''), border=1)
+            pdf.cell(45, 8, format_de(row["Tilgung"]).replace('€', ''), border=1)
+            pdf.cell(45, 8, format_de(row["Restschuld"]).replace('€', ''), border=1, ln=True)
 
+        # In neueren fpdf-Versionen ist die Ausgabe direkt binär (bytearray)
         return pdf.output()
 
 
+    # 8. Download & Ballons
     try:
-        current_data = pd.DataFrame(plan_m) if view_m else pd.DataFrame(plan_j)
-        x_lbl = "Monat" if view_m else "Jahr"
-        pdf_out = generate_pdf_final(current_data, darlehen, gz, lz_t, x_lbl)
+        final_pdf = generate_pdf_bytes(plan_j, darlehen, gz, lz_t)
 
-        # Download Button
-        st.download_button(
-            label="📄 PDF speichern?",
-            data=bytes(pdf_out),
-            file_name="Finanzprognose.pdf",
-            mime="application/pdf"
-        )
+        if st.download_button(
+                label="📄 Als PDF speichern",
+                data=bytes(final_pdf),  # Konvertiert bytearray sicher in bytes
+                file_name="Finanzcheck_AH.pdf",
+                mime="application/pdf"
+        ):
+            st.balloons()
     except Exception as e:
-        st.error(f"PDF-Fehler: {e}")
-
-else:
-    st.warning("Kein Darlehen erforderlich.")
+        st.error(f"Fehler bei der PDF-Erstellung: {e}")
