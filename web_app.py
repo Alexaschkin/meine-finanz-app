@@ -24,20 +24,20 @@ st.markdown("""
     .view-toggle-box { background-color: #e8f0fe; padding: 10px; border-radius: 8px; border: 1px solid blue; margin-bottom: 15px; display: flex; align-items: center; justify-content: center; }
     .result-container { display: flex; justify-content: space-between; gap: 8px; margin: 20px 0 5px 0; flex-wrap: wrap; }
     .result-card { background: white; padding: 10px; border-radius: 10px; text-align: center; flex: 1; min-width: 100px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 1px solid #f0f0f0; }
-    .card-label { font-size: 0.65rem; color: #666; font-weight: 600; text-transform: uppercase; display: block; }
+    .card-label { font-size: 0.7rem; color: #666; font-weight: 800; text-transform: uppercase; display: block; }
     .card-value { font-size: 0.95rem; color: #1a1a1a; font-weight: 800; display: block; margin-top: 3px; }
 
-    /* PDF Button - Optimiert für Smartphone */
+    /* PDF Button Design - Rot und Mobil-optimiert */
     div.stDownloadButton { display: flex; justify-content: center; width: 100%; margin-top: 20px; margin-bottom: 50px; }
-    div.stDownloadButton > button {
-        width: 100% !important;
-        background-color: #ff4b4b !important;
-        color: white !important;
-        padding: 18px !important;
-        font-weight: bold !important;
-        border-radius: 12px !important;
-        border: none !important;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.2) !important;
+    div.stDownloadButton > button { 
+        width: 100% !important; 
+        background-color: #ff4b4b !important; 
+        color: white !important; 
+        padding: 18px !important; 
+        font-weight: bold !important; 
+        border-radius: 12px !important; 
+        border: none !important; 
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2) !important; 
     }
     </style>
     <div class="main-header">
@@ -57,7 +57,7 @@ with st.expander("📝 Eingabedaten anpassen", expanded=True):
     with col_b:
         zins = st.number_input("Sollzins p.a. (%)", value=3.8, step=0.1, format="%.2f")
         sonti_p = st.number_input("Sondertilgung p.a. (%)", value=1.0, step=0.5)
-        makler_aktiv = st.checkbox("Makler involviert", value=True)
+        makler_aktiv = st.checkbox("Makler beteiligt", value=True)
         makler_p = st.number_input("Maklerprovision (%)", value=3.57, step=0.01, disabled=not makler_aktiv)
 
     m_kosten = preis * (makler_p / 100) if makler_aktiv else 0
@@ -67,15 +67,18 @@ with st.expander("📝 Eingabedaten anpassen", expanded=True):
     gesamtkosten = preis + nebenkosten_gesamt
     rechnerischer_bedarf = gesamtkosten - ek
 
-    st.markdown(f"""
-    <div class="kosten-liste">
-        <div class="flex-row"><span>Kaufpreis:</span><span>{format_de(preis)}</span></div>
-        <div class="flex-row"><span>Nebenkosten:</span><span>{format_de(nebenkosten_gesamt)}</span></div>
-        <div class="flex-row"><span>Eigenkapital:</span><span>- {format_de(ek)}</span></div>
-        <div class="flex-row total-row"><span>GESAMTBEDARF:</span><span>{format_de(gesamtkosten)}</span></div>
-        <div class="flex-row" style="color: blue; font-weight: bold;"><span>DARLEHENSBEDARF:</span><span>{format_de(rechnerischer_bedarf)}</span></div>
-    </div>
-    """, unsafe_allow_html=True)
+    # Kostenliste HTML
+    html_liste = f'<div class="flex-row"><span>Kaufpreis:</span><span>{format_de(preis)}</span></div>'
+    html_liste += f'<div class="flex-row"><span>Grunderwerbsteuer ({grunderwerb_p}%):</span><span>{format_de(g_kosten)}</span></div>'
+    html_liste += f'<div class="flex-row"><span>Notar & Grundbuch ({notar_p}%):</span><span>{format_de(n_kosten)}</span></div>'
+    if makler_aktiv:
+        html_liste += f'<div class="flex-row"><span>Maklerprovision ({makler_p}%):</span><span>{format_de(m_kosten)}</span></div>'
+    html_liste += f'<div class="flex-row" style="font-style: italic; color: #555;"><span>Nebenkosten gesamt:</span><span>{format_de(nebenkosten_gesamt)}</span></div>'
+    html_liste += f'<div class="flex-row"><span>Eigenkapital:</span><span>- {format_de(ek)}</span></div>'
+    html_liste += f'<div class="flex-row total-row"><span>GESAMTBEDARF:</span><span>{format_de(gesamtkosten)}</span></div>'
+    html_liste += f'<div class="flex-row" style="color: blue; font-weight: bold;"><span>DARLEHENSBEDARF:</span><span>{format_de(rechnerischer_bedarf)}</span></div>'
+
+    st.markdown(f'<div class="kosten-liste">{html_liste}</div>', unsafe_allow_html=True)
 
     darlehen = st.number_input("Tatsächliche Darlehenssumme (€)", value=float(round(rechnerischer_bedarf, -2)),
                                step=1000.0)
@@ -100,7 +103,8 @@ if darlehen > 0:
         gz += zm
         j_zins += zm
         j_tilg += cur_tilg
-        plan_m.append({"Monat": m, "Zins": zm, "Tilgung": cur_tilg, "Restschuld": max(0, rest)})
+        # Wir speichern tm (regulär) für die Grafik, damit die Sondertilgung keine Zacken macht
+        plan_m.append({"Monat": m, "Zins": zm, "Tilgung": tm, "Gesamt_Tilgung": cur_tilg, "Restschuld": max(0, rest)})
         if m % 12 == 0 or rest <= 0.01:
             plan_j.append({"Jahr": (m // 12 if m % 12 == 0 else m // 12 + 1), "Zins": j_zins, "Tilgung": j_tilg,
                            "Restschuld": max(0, rest)})
@@ -108,82 +112,90 @@ if darlehen > 0:
         if rest <= 0.01: break
         m += 1
 
-    # Graph anzeigen
-    fig, ax1 = plt.subplots(figsize=(8, 4))
-    df_p = pd.DataFrame(plan_j)
-    ax1.plot(df_p["Jahr"], df_p["Restschuld"], color="blue", label="Restschuld")
-    ax1.set_ylabel("Restschuld (€)", color="blue")
-    ax1.set_xlabel("Laufzeit in Jahren", fontweight='bold')
-    ax2 = ax1.twinx()
-    ax2.plot(df_p["Jahr"], df_p["Zins"], color="red", linestyle="--", label="Zins")
-    ax2.plot(df_p["Jahr"], df_p["Tilgung"], color="green", linestyle="-.", label="Tilgung")
-    ax2.set_ylabel("Zins / Tilgung (€)")
-    ax1.legend(loc='upper center', bbox_to_anchor=(0.5, -0.28), ncol=3, frameon=False)
-    st.pyplot(fig)
-
-    # 6. Tabellen-Umschalter
+    # 6. Schalter für Ansicht
     st.markdown('<div class="view-toggle-box">', unsafe_allow_html=True)
-    view_m = st.toggle("🔍 Monatsansicht aktivieren", value=False)
+    view_m = st.toggle("🔍 Monatsansicht aktivieren (Grafik & Tabelle)", value=False)
     st.markdown('</div>', unsafe_allow_html=True)
 
+    # 7. Dynamische & Ruhige Grafik
+    fig, ax1 = plt.subplots(figsize=(8, 4))
+    df_plot = pd.DataFrame(plan_m) if view_m else pd.DataFrame(plan_j)
+    x_label = "Monat" if view_m else "Jahr"
+
+    ax1.plot(df_plot[x_label], df_plot["Restschuld"], color="blue", linewidth=2, label="Restschuld")
+    ax1.set_ylabel("Restschuld (€)", color="blue", fontweight='bold')
+    ax1.set_xlabel(f"Laufzeit in {x_label}en", fontweight='bold')
+
+    ax2 = ax1.twinx()
+    # In der Monatsansicht plotten wir nur die reguläre Tilgung (ohne Sonti-Ausschlag)
+    ax2.plot(df_plot[x_label], df_plot["Zins"], color="red", linestyle="--", alpha=0.6, label="Zins")
+    ax2.plot(df_plot[x_label], df_plot["Tilgung"], color="green", linestyle="-.", alpha=0.6, label="Tilgung")
+    ax2.set_ylabel("Zins / Tilgung (€)")
+
+    ax1.legend(loc='upper center', bbox_to_anchor=(0.5, -0.25), ncol=3, frameon=False)
+    st.pyplot(fig)
+
     with st.expander("📊 Tabelle anzeigen", expanded=False):
-        current_df = pd.DataFrame(plan_m) if view_m else pd.DataFrame(plan_j)
-        st.dataframe(current_df.map(lambda x: format_de(x) if isinstance(x, (int, float)) and x > 50 else x),
+        tab_df = df_plot.copy()
+        if "Gesamt_Tilgung" in tab_df.columns:
+            tab_df["Tilgung"] = tab_df["Gesamt_Tilgung"]
+            tab_df = tab_df.drop(columns=["Gesamt_Tilgung"])
+        st.dataframe(tab_df.map(lambda x: format_de(x) if isinstance(x, (int, float)) and x > 50 else x),
                      use_container_width=True, hide_index=True)
 
-    # Ergebnis-Karten (Mit "Ges. Zinsen")
+    # 8. Ergebnis-Karten (Label geändert auf ZINSEN)
     lz_t = f"{m // 12} J. {m % 12} M."
     st.markdown(f"""
     <div class="result-container">
-        <div class="result-card"><span class="card-label">Ges. Zinsen</span><span class="card-value">{format_de(gz)}</span></div>
-        <div class="result-card"><span class="card-label">Gesamtkosten</span><span class="card-value">{format_de(darlehen + gz)}</span></div>
-        <div class="result-card"><span class="card-label">Laufzeit</span><span class="card-value">{lz_t}</span></div>
+        <div class="result-card">
+            <span class="card-label">ZINSEN</span>
+            <span class="card-value">{format_de(gz)}</span>
+        </div>
+        <div class="result-card">
+            <span class="card-label">GESAMTKOSTEN</span>
+            <span class="card-value">{format_de(darlehen + gz)}</span>
+        </div>
+        <div class="result-card">
+            <span class="card-label">LAUFZEIT</span>
+            <span class="card-value">{lz_t}</span>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
 
-    # 7. PDF Logik (Korrigiert für bytearray)
-    def generate_pdf_final(data_list, d_sum, z_g, lz_text, is_monthly):
+    # 9. PDF Logik
+    def generate_pdf(data_list, d_sum, z_g, lz_text, is_m):
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Helvetica", "B", 16)
         pdf.cell(0, 10, "Finanz-Check AH - Ergebnis", ln=True, align="C")
         pdf.ln(10)
-        pdf.set_font("Helvetica", "", 12)
-        pdf.cell(0, 10, f"Darlehenssumme: {format_de(d_sum).replace('€', 'EUR')}", ln=True)
-        pdf.cell(0, 10, f"Gesamtzinsen: {format_de(z_g).replace('€', 'EUR')}", ln=True)
-        pdf.cell(0, 10, f"Laufzeit: {lz_text}", ln=True)
-        pdf.ln(5)
-
-        pdf.set_font("Helvetica", "B", 10)
-        label_col = "Monat" if is_monthly else "Jahr"
-        pdf.cell(30, 10, label_col, border=1)
-        pdf.cell(45, 10, "Zins (EUR)", border=1)
-        pdf.cell(45, 10, "Tilgung (EUR)", border=1)
-        pdf.cell(45, 10, "Restschuld (EUR)", border=1, ln=True)
-
+        pdf.set_font("Helvetica", "B", 12);
+        pdf.cell(0, 10, "Zusammenfassung:", ln=True)
         pdf.set_font("Helvetica", "", 10)
-        # Limit auf 200 Zeilen für PDF-Stabilität
-        for row in data_list[:200]:
-            pdf.cell(30, 8, str(row.get(label_col)), border=1)
+        pdf.cell(0, 8, f"Darlehenssumme: {format_de(d_sum).replace('€', 'EUR')}", ln=True)
+        pdf.cell(0, 8, f"Zinsen: {format_de(z_g).replace('€', 'EUR')}", ln=True)
+        pdf.cell(0, 8, f"Laufzeit: {lz_text}", ln=True)
+        pdf.ln(5)
+        pdf.set_font("Helvetica", "B", 10)
+        col = "Monat" if is_m else "Jahr"
+        pdf.cell(30, 10, col, border=1);
+        pdf.cell(45, 10, "Zins (EUR)", border=1);
+        pdf.cell(45, 10, "Tilgung (EUR)", border=1);
+        pdf.cell(45, 10, "Restschuld (EUR)", border=1, ln=True)
+        pdf.set_font("Helvetica", "", 10)
+        for row in data_list[:240]:
+            pdf.cell(30, 8, str(row.get(col)), border=1)
             pdf.cell(45, 8, format_de(row["Zins"]).replace('€', ''), border=1)
-            pdf.cell(45, 8, format_de(row["Tilgung"]).replace('€', ''), border=1)
+            pdf.cell(45, 8, format_de(row.get("Gesamt_Tilgung", row["Tilgung"])).replace('€', ''), border=1)
             pdf.cell(45, 8, format_de(row["Restschuld"]).replace('€', ''), border=1, ln=True)
-
         return pdf.output()
 
 
-    # 8. Download & Ballons
     try:
-        # PDF basierend auf aktueller Ansicht erzeugen
-        pdf_output = generate_pdf_final(plan_m if view_m else plan_j, darlehen, gz, lz_t, view_m)
-
-        if st.download_button(
-                label="📄 Als PDF speichern",
-                data=bytes(pdf_output),  # Wichtig: bytes() Konvertierung löst den Fehler
-                file_name="Finanzcheck_AH.pdf",
-                mime="application/pdf"
-        ):
+        pdf_out = generate_pdf(df_plot.to_dict('records'), darlehen, gz, lz_t, view_m)
+        if st.download_button(label="📄 Als PDF speichern", data=bytes(pdf_out), file_name="Finanzcheck_AH.pdf",
+                              mime="application/pdf"):
             st.balloons()
     except Exception as e:
-        st.error(f"Fehler bei der PDF-Erstellung: {e}")
+        st.error(f"Fehler: {e}")
