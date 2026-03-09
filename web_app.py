@@ -34,23 +34,16 @@ st.markdown("""
     .card-label { font-size: 0.65rem; color: #666; font-weight: 600; text-transform: uppercase; display: block; }
     .card-value { font-size: 0.95rem; color: #1a1a1a; font-weight: 800; display: block; margin-top: 3px; }
 
-    /* PDF Button Zentrierung fixieren */
-    div.stDownloadButton {
-        display: flex;
-        justify-content: center;
-        width: 100%;
-        margin-top: 5px;
-    }
+    /* PDF Button Style */
     div.stDownloadButton > button {
         background-color: #ff4b4b !important; 
         color: white !important; 
         border-radius: 8px !important;
-        padding: 10px 20px !important; 
-        font-size: 15px !important; 
+        padding: 10px 15px !important; 
+        font-size: 14px !important; 
         font-weight: bold !important;
         border: none !important; 
         box-shadow: 0 4px 10px rgba(0,0,0,0.2) !important;
-        min-width: 180px;
     }
     </style>
     <div class="main-header">
@@ -123,6 +116,7 @@ if darlehen > 0:
         if rest <= 0.01: break
         m += 1
 
+    # Toggle & Diagramm
     st.markdown('<div class="view-toggle-box">', unsafe_allow_html=True)
     view_m = st.toggle("🔍 Monatsansicht aktivieren", value=False)
     st.markdown('</div>', unsafe_allow_html=True)
@@ -130,7 +124,6 @@ if darlehen > 0:
     current_df = pd.DataFrame(plan_m) if view_m else pd.DataFrame(plan_j)
     x_ax_label = "Monat" if view_m else "Jahr"
 
-    # Diagramm
     fig, ax1 = plt.subplots(figsize=(8, 4))
     l1, = ax1.plot(current_df[x_ax_label], current_df["Restschuld"], color="blue", label="Restschuld")
     ax1.set_ylabel("Restschuld (€)", color="blue")
@@ -159,14 +152,14 @@ if darlehen > 0:
     lz_t = f"{m // 12} J. {m % 12} M."
     st.markdown(f"""
     <div class="result-container">
-        <div class="result-card"><span class="card-label">GES. ZINSEN</span><span class="card-value">{format_de(gz)}</span></div>
-        <div class="result-card"><span class="card-label">GESAMTKOSTEN</span><span class="card-value">{format_de(darlehen + gz)}</span></div>
-        <div class="result-card"><span class="card-label">LAUFZEIT IN JAHREN</span><span class="card-value">{lz_t}</span></div>
+        <div class="result-card"><span class="card-label">Ges. Zinsen</span><span class="card-value">{format_de(gz)}</span></div>
+        <div class="result-card"><span class="card-label">Gesamtkosten</span><span class="card-value">{format_de(darlehen + gz)}</span></div>
+        <div class="result-card"><span class="card-label">Laufzeit in Jahren</span><span class="card-value">{lz_t}</span></div>
     </div>
     """, unsafe_allow_html=True)
 
 
-    # PDF Erzeugung
+    # PDF Funktion
     def generate_pdf(df_data, d_sum, z_g, lz_text, x_label, figure):
         pdf = FPDF()
         pdf.add_page()
@@ -204,17 +197,17 @@ if darlehen > 0:
 
         pdf_output = pdf.output()
         if os.path.exists(tmp_path): os.remove(tmp_path)
-        return bytes(pdf_output)  # Explizite Umwandlung in bytes()
+        return bytes(pdf_output)  # Wichtig für Streamlit
 
 
-    pdf_data = generate_pdf(current_df, darlehen, gz, lz_t, x_ax_label, fig)
+    final_pdf_data = generate_pdf(current_df, darlehen, gz, lz_t, x_ax_label, fig)
 
-    # PDF Button zentriert unter der mittleren Karte (Spalten-Logik für Streamlit)
-    c1, c2, c3 = st.columns(3)
-    with c2:
+    # PDF Button exakt zentriert unter die mittlere Karte
+    col1, col2, col3 = st.columns(3)
+    with col2:
         st.download_button(
             label="📄 PDF speichern?",
-            data=pdf_data,
+            data=final_pdf_data,
             file_name="Finanzprognose.pdf",
             mime="application/pdf",
             use_container_width=True
