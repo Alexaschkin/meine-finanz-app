@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from fpdf import FPDF
 import io
 
-# Mobile Optimierung & Layout
+# Mobile Optimierung
 st.set_page_config(page_title="Finanz-Check AH", layout="centered")
 
 
@@ -13,7 +13,7 @@ def format_de(wert):
     return f"{wert:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") + " €"
 
 
-# CSS für Styling inkl. exakter Button-Zentrierung
+# CSS für Styling
 st.markdown("""
     <style>
     .main-header { background-color: blue; padding: 10px; border-radius: 8px; text-align: center; color: white; margin-bottom: 20px; }
@@ -23,21 +23,19 @@ st.markdown("""
     .flex-row { display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding: 4px 0; }
     .total-row { border-top: 2px solid #333; margin-top: 8px; padding-top: 8px; font-weight: bold; }
     .view-toggle-box { background-color: #e8f0fe; padding: 10px; border-radius: 8px; border: 1px solid blue; margin-bottom: 10px; display: flex; align-items: center; justify-content: center; }
+
+    /* Karten Design */
     .result-container { display: flex; justify-content: space-between; gap: 8px; margin: 20px 0 5px 0; flex-wrap: wrap; }
     .result-card { background: white; padding: 10px; border-radius: 10px; text-align: center; flex: 1; min-width: 100px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 1px solid #f0f0f0; }
     .card-label { font-size: 0.65rem; color: #666; font-weight: 600; text-transform: uppercase; display: block; }
     .card-value { font-size: 0.95rem; color: #1a1a1a; font-weight: 800; display: block; margin-top: 3px; }
 
+    /* PDF Button Zentrierung */
+    .button-row { display: flex; justify-content: center; margin-top: 10px; margin-bottom: 30px; }
     div.stDownloadButton > button {
-        background-color: #ff4b4b !important; 
-        color: white !important; 
-        border-radius: 8px !important;
-        padding: 10px 15px !important; 
-        font-size: 14px !important; 
-        font-weight: bold !important;
-        border: none !important; 
-        box-shadow: 0 4px 10px rgba(0,0,0,0.2) !important;
-        width: 100%;
+        background-color: #ff4b4b !important; color: white !important; border-radius: 8px !important;
+        padding: 10px 25px !important; font-size: 15px !important; font-weight: bold !important;
+        border: none !important; box-shadow: 0 4px 10px rgba(0,0,0,0.2) !important;
     }
     </style>
     <div class="main-header">
@@ -150,24 +148,27 @@ if darlehen > 0:
     """, unsafe_allow_html=True)
 
 
-    # PDF Erzeugung Funktion - FINALER FIX
-    def generate_pdf_data(df_data, d_sum, z_g, lz_text, x_label, figure):
+    # PDF Erzeugung Funktion - MAXIMALE STABILITÄT
+    def generate_pdf_bytes(df_data, d_sum, z_g, lz_text, x_label, figure):
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Helvetica", "B", 18)
         pdf.cell(0, 15, "Finanzprognose", ln=True, align="C")
         pdf.ln(5)
+
         pdf.set_font("Helvetica", "", 12)
         pdf.cell(0, 8, f"Darlehenssumme: {format_de(d_sum).replace('€', 'EUR')}", ln=True)
         pdf.cell(0, 8, f"Gesamtzinsen: {format_de(z_g).replace('€', 'EUR')}", ln=True)
         pdf.cell(0, 8, f"Laufzeit: {lz_text}", ln=True)
         pdf.ln(5)
 
-        # Diagramm als Bild-Stream einbetten - FIX: type="PNG" hinzugefügt
-        img_buf = io.BytesIO()
-        figure.savefig(img_buf, format="png", bbox_inches='tight', dpi=120)
-        img_buf.seek(0)
-        pdf.image(img_buf, x=15, w=180, type="PNG")
+        # Diagramm als PNG in BytesIO-Stream speichern
+        img_stream = io.BytesIO()
+        figure.savefig(img_stream, format="png", bbox_inches='tight', dpi=100)
+        img_stream.seek(0)
+
+        # In das PDF einbetten - fpdf2 kann direkt mit dem Stream arbeiten
+        pdf.image(img_stream, x=15, w=180)
         pdf.ln(5)
 
         pdf.set_font("Helvetica", "B", 10)
@@ -187,26 +188,25 @@ if darlehen > 0:
             pdf.cell(50, 7, format_de(row["Restschuld"]).replace('€', '').strip(), border=1)
             pdf.ln()
 
-        # Rückgabe als bytes
+        # Explizit als bytes konvertieren für Streamlit
         return bytes(pdf.output())
 
 
-    # Ausführung der PDF-Generierung
+    # Ausführung der PDF-Generierung mit Fehler-Absicherung
     try:
-        final_pdf_bytes = generate_pdf_data(current_df, darlehen, gz, lz_t, x_ax_label, fig)
+        pdf_content = generate_pdf_bytes(current_df, darlehen, gz, lz_t, x_ax_label, fig)
 
-        # Download-Button in zentrierter Spalte
         col1, col2, col3 = st.columns(3)
         with col2:
             st.download_button(
                 label="📄 PDF speichern?",
-                data=final_pdf_bytes,
+                data=pdf_content,
                 file_name="Finanzprognose.pdf",
                 mime="application/pdf",
                 use_container_width=True
             )
     except Exception as e:
-        st.error(f"Fehler bei der PDF-Erstellung: {e}")
+        st.error(f"Es gab ein technisches Problem beim Vorbereiten des PDFs: {e}")
 
 else:
     st.warning("Kein Darlehen erforderlich.")
