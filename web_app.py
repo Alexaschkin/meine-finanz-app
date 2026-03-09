@@ -3,7 +3,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from fpdf import FPDF
 import io
-import os
 
 # Mobile Optimierung & Layout
 st.set_page_config(page_title="Finanz-Check AH", layout="centered")
@@ -47,7 +46,6 @@ st.markdown("""
     </div>
     """, unsafe_allow_html=True)
 
-# 1. Eingabebereich
 with st.expander("📝 Eingabedaten anpassen", expanded=True):
     col_a, col_b = st.columns(2)
     with col_a:
@@ -152,7 +150,7 @@ if darlehen > 0:
     """, unsafe_allow_html=True)
 
 
-    # PDF Erzeugung Funktion - FIX FÜR BYTEARRAY FEHLER
+    # PDF Erzeugung Funktion - FINALER FIX
     def generate_pdf_data(df_data, d_sum, z_g, lz_text, x_label, figure):
         pdf = FPDF()
         pdf.add_page()
@@ -165,11 +163,11 @@ if darlehen > 0:
         pdf.cell(0, 8, f"Laufzeit: {lz_text}", ln=True)
         pdf.ln(5)
 
-        # Diagramm als Bild-Stream einbetten
+        # Diagramm als Bild-Stream einbetten - FIX: type="PNG" hinzugefügt
         img_buf = io.BytesIO()
         figure.savefig(img_buf, format="png", bbox_inches='tight', dpi=120)
         img_buf.seek(0)
-        pdf.image(img_buf, x=15, w=180)
+        pdf.image(img_buf, x=15, w=180, type="PNG")
         pdf.ln(5)
 
         pdf.set_font("Helvetica", "B", 10)
@@ -189,7 +187,7 @@ if darlehen > 0:
             pdf.cell(50, 7, format_de(row["Restschuld"]).replace('€', '').strip(), border=1)
             pdf.ln()
 
-        # DER ENTSCHEIDENDE FIX: Rückgabe IMMER als bytes()
+        # Rückgabe als bytes
         return bytes(pdf.output())
 
 
