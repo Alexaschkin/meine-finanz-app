@@ -85,14 +85,29 @@ with st.expander("📝 Eingabedaten anpassen", expanded=True):
     t_art = st.radio("Tilgungswahl:", ["in % p.a.", "in € monatlich"], horizontal=True)
     t_val = st.number_input("Tilgungswert", value=2.0 if "%" in t_art else 500.0)
 
+    # MONATLICHE RATE BERECHNUNG
+    z_dez_calc = zins / 100
+    if "in % p.a." in t_art:
+        rate_m_anzeige = (darlehen * (z_dez_calc + (t_val / 100)) / 12)
+    else:
+        rate_m_anzeige = (darlehen * (z_dez_calc / 12) + t_val)
+
+    # RATE SICHTBAR MACHEN
+    st.markdown(f"""
+        <div style="margin-top: 10px; padding: 15px; border-radius: 10px; background-color: #e3f2fd; border: 2px solid blue; text-align: center;">
+            <span style="font-size: 0.85rem; color: #555; font-weight: bold; text-transform: uppercase;">Monatliche Rate:</span><br>
+            <span style="font-size: 1.4rem; color: blue; font-weight: 900;">{format_de(rate_m_anzeige)}</span>
+        </div>
+    """, unsafe_allow_html=True)
+
 # 5. Berechnung
 if darlehen > 0:
     z_dez = zins / 100
-    rate_m = (darlehen * (z_dez + (t_val / 100)) / 12) if "in % p.a." in t_art else (darlehen * (z_dez / 12) + t_val)
+    rate_m = rate_m_anzeige
     plan_m, plan_j = [], []
     rest, m, gz = darlehen, 1, 0
     s_euro = darlehen * (sonti_p / 100)
-    j_zins, j_tilg = 0, 0
+    j_zins, j_tilg, j_rate = 0, 0, 0
 
     while rest > 0.01 and m <= 600:
         zm = rest * (z_dez / 12)
@@ -103,36 +118,32 @@ if darlehen > 0:
         gz += zm
         j_zins += zm
         j_tilg += cur_tilg
-        # Wir speichern tm (regulär) für die Grafik, damit die Sondertilgung keine Zacken macht
-        plan_m.append({"Monat": m, "Zins": zm, "Tilgung": tm, "Gesamt_Tilgung": cur_tilg, "Restschuld": max(0, rest)})
+        j_rate += rate_m
+
+        plan_m.append({"Monat": m, "Rate": rate_m, "Zins": zm, "Tilgung": tm, "Gesamt_Tilgung": cur_tilg,
+                       "Restschuld": max(0, rest)})
         if m % 12 == 0 or rest <= 0.01:
-            plan_j.append({"Jahr": (m // 12 if m % 12 == 0 else m // 12 + 1), "Zins": j_zins, "Tilgung": j_tilg,
+            plan_j.append({"Jahr": (m // 12 if m % 12 == 0 else m // 12 + 1), "Rate (Jahr)": j_rate, "Zins": j_zins,
+                           "Tilgung": j_tilg,
                            "Restschuld": max(0, rest)})
-            j_zins, j_tilg = 0, 0
+            j_zins, j_tilg, j_rate = 0, 0, 0
         if rest <= 0.01: break
         m += 1
 
-    # 6. Schalter für Ansicht
     st.markdown('<div class="view-toggle-box">', unsafe_allow_html=True)
     view_m = st.toggle("🔍 Monatsansicht aktivieren (Grafik & Tabelle)", value=False)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # 7. Dynamische & Ruhige Grafik
     fig, ax1 = plt.subplots(figsize=(8, 4))
     df_plot = pd.DataFrame(plan_m) if view_m else pd.DataFrame(plan_j)
     x_label = "Monat" if view_m else "Jahr"
 
     ax1.plot(df_plot[x_label], df_plot["Restschuld"], color="blue", linewidth=2, label="Restschuld")
     ax1.set_ylabel("Restschuld (€)", color="blue", fontweight='bold')
-    ax1.set_xlabel(f"Laufzeit in {x_label}en", fontweight='bold')
-
     ax2 = ax1.twinx()
-    # In der Monatsansicht plotten wir nur die reguläre Tilgung (ohne Sonti-Ausschlag)
     ax2.plot(df_plot[x_label], df_plot["Zins"], color="red", linestyle="--", alpha=0.6, label="Zins")
     ax2.plot(df_plot[x_label], df_plot["Tilgung"], color="green", linestyle="-.", alpha=0.6, label="Tilgung")
-    ax2.set_ylabel("Zins / Tilgung (€)")
-
-    ax1.legend(loc='upper center', bbox_to_anchor=(0.5, -0.25), ncol=3, frameon=False)
+    ax1.legend(loc='upper right')
     st.pyplot(fig)
 
     with st.expander("📊 Tabelle anzeigen", expanded=False):
@@ -143,59 +154,20 @@ if darlehen > 0:
         st.dataframe(tab_df.map(lambda x: format_de(x) if isinstance(x, (int, float)) and x > 50 else x),
                      use_container_width=True, hide_index=True)
 
-    # 8. Ergebnis-Karten (Label geändert auf ZINSEN)
     lz_t = f"{m // 12} J. {m % 12} M."
     st.markdown(f"""
     <div class="result-container">
-        <div class="result-card">
-            <span class="card-label">ZINSEN</span>
-            <span class="card-value">{format_de(gz)}</span>
-        </div>
-        <div class="result-card">
-            <span class="card-label">GESAMTKOSTEN</span>
-            <span class="card-value">{format_de(darlehen + gz)}</span>
-        </div>
-        <div class="result-card">
-            <span class="card-label">LAUFZEIT</span>
-            <span class="card-value">{lz_t}</span>
-        </div>
+        <div class="result-card"><span class="card-label">ZINSEN</span><span class="card-value">{format_de(gz)}</span></div>
+        <div class="result-card"><span class="card-label">GESAMT</span><span class="card-value">{format_de(gz + darlehen)}</span></div>
+        <div class="result-card"><span class="card-label">LAUFZEIT</span><span class="card-value">{lz_t}</span></div>
     </div>
     """, unsafe_allow_html=True)
 
+    # PDF EXPORT FIX & BUTTON BEZEICHNUNG
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.cell(200, 10, txt="Finanz-Check Ergebnis", ln=True, align='C')
 
-    # 9. PDF Logik
-    def generate_pdf(data_list, d_sum, z_g, lz_text, is_m):
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Helvetica", "B", 16)
-        pdf.cell(0, 10, "Finanz-Check AH - Ergebnis", ln=True, align="C")
-        pdf.ln(10)
-        pdf.set_font("Helvetica", "B", 12);
-        pdf.cell(0, 10, "Zusammenfassung:", ln=True)
-        pdf.set_font("Helvetica", "", 10)
-        pdf.cell(0, 8, f"Darlehenssumme: {format_de(d_sum).replace('€', 'EUR')}", ln=True)
-        pdf.cell(0, 8, f"Zinsen: {format_de(z_g).replace('€', 'EUR')}", ln=True)
-        pdf.cell(0, 8, f"Laufzeit: {lz_text}", ln=True)
-        pdf.ln(5)
-        pdf.set_font("Helvetica", "B", 10)
-        col = "Monat" if is_m else "Jahr"
-        pdf.cell(30, 10, col, border=1);
-        pdf.cell(45, 10, "Zins (EUR)", border=1);
-        pdf.cell(45, 10, "Tilgung (EUR)", border=1);
-        pdf.cell(45, 10, "Restschuld (EUR)", border=1, ln=True)
-        pdf.set_font("Helvetica", "", 10)
-        for row in data_list[:240]:
-            pdf.cell(30, 8, str(row.get(col)), border=1)
-            pdf.cell(45, 8, format_de(row["Zins"]).replace('€', ''), border=1)
-            pdf.cell(45, 8, format_de(row.get("Gesamt_Tilgung", row["Tilgung"])).replace('€', ''), border=1)
-            pdf.cell(45, 8, format_de(row["Restschuld"]).replace('€', ''), border=1, ln=True)
-        return pdf.output()
-
-
-    try:
-        pdf_out = generate_pdf(df_plot.to_dict('records'), darlehen, gz, lz_t, view_m)
-        if st.download_button(label="📄 Als PDF speichern", data=bytes(pdf_out), file_name="Finanzcheck_AH.pdf",
-                              mime="application/pdf"):
-            st.balloons()
-    except Exception as e:
-        st.error(f"Fehler: {e}")
+    pdf_output = pdf.output(dest='S')
+    st.download_button(label="📥 PDF-Export", data=bytes(pdf_output), file_name="Finanz-Check.pdf")
